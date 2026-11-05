@@ -1,0 +1,62 @@
+#!/bin/sh
+# MEOW linux initramfs: bring up just enough to get a shell on the USB serial
+# gadget. Run on the phone, not on the host.
+BIN=/bin/busybox
+$BIN --install -s /bin
+
+mount -t proc     proc     /proc     2>/dev/null
+mount -t sysfs    sysfs    /sys      2>/dev/null
+mount -t tmpfs    tmpfs    /dev      2>/dev/null
+mount -t tmpfs    tmpfs    /tmp      2>/dev/null
+mkdir -p /dev/pts
+mount -t devpts   devpts   /dev/pts  2>/dev/null
+
+[ -e /dev/console ] || mknod -m 600 /dev/console c 5 1
+[ -e /dev/null ]    || mknod -m 666 /dev/null    c 1 3
+[ -e /dev/zero ]    || mknod -m 666 /dev/zero    c 1 5
+[ -e /dev/tty ]     || mknod -m 666 /dev/tty     c 5 0
+[ -e /dev/random ]  || mknod -m 666 /dev/random  c 1 8
+[ -e /dev/urandom ] || mknod -m 666 /dev/urandom c 1 9
+
+echo "meow-linux: kernel $($BIN cat /proc/version 2>/dev/null)"
+echo "meow-linux: loading modules"
+
+# The prebuilt modules are 5.15.41 and the kernel is 5.15.94, so force them;
+# fall back to a normal load if the kernel accepts that instead.
+for m in /modules/*.ko; do
+	$BIN insmod -f "$m" 2>/dev/null || $BIN insmod "$m" 2>/dev/null
+done
+
+# USB gadget serial console. The function is built in (CONFIG_USB_F_SERIAL).
+$BIN mkdir -p /dev/config 2>/dev/null
+mount -t configfs configfs /dev/config 2>/dev/null
+if [ -d /dev/config/usb_gadget ]; then
+	G=/dev/config/usb_gadget/meow
+	$BIN mkdir -p $G
+	echo 0x18d1 > $G/idVendor  2>/dev/null
+	echo 0x4e42 > $G/idProduct 2>/dev/null
+	$BIN mkdir -p $G/strings/0x409
+	echo meow > $G/strings/0x409/manufacturer 2>/dev/null
+	echo meow-linux > $G/strings/0x409/product 2>/dev/null
+	$BIN mkdir -p $G/configs/b.1/strings/0x409
+	echo meow > $G/configs/b.1/strings/0x409/configuration 2>/dev/null
+	$BIN mkdir -p $G/functions/gser.0 2>/dev/null
+	$BIN ln -s $G/functions/gser.0 $G/configs/b.1/gser.0 2>/dev/null
+	UDC=$($BIN ls /sys/class/udc/ 2>/dev/null | $BIN head -1)
+	if [ -n "$UDC" ]; then
+		echo "$UDC" > $G/UDC 2>/dev/null
+		echo "meow-linux: udc $UDC"
+	else
+		echo "meow-linux: no udc found"
+	fi
+fi
+
+# /dev/ttyGS0 has a dynamically allocated major: read it from /proc/devices.
+GS=$($BIN grep ttyGS /proc/devices 2>/dev/null | $BIN awk '{print $1}' | $BIN head -1)
+if [ -n "$GS" ]; then
+	$BIN mknod -m 600 /dev/ttyGS0 c "$GS" 0 2>/dev/null
+	echo "meow-linux: /dev/ttyGS0 major $GS"
+fi
+
+echo "meow-linux: up"
+exec $BIN sh
