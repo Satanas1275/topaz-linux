@@ -21,10 +21,11 @@ mount -t devpts   devpts   /dev/pts  2>/dev/null
 echo "meow-linux: kernel $($BIN cat /proc/version 2>/dev/null)"
 echo "meow-linux: loading modules"
 
-# The prebuilt modules are 5.15.41 and the kernel is 5.15.94, so force them;
-# fall back to a normal load if the kernel accepts that instead.
+# The prebuilt modules are built from the same 5.15.41 tree but a different
+# config, so their symbol CRCs differ. loadmod passes both ignore flags; the
+# kernel is built with CONFIG_MODULE_FORCE_LOAD=y so it accepts them.
 for m in /modules/*.ko; do
-	$BIN insmod -f "$m" 2>/dev/null || $BIN insmod "$m" 2>/dev/null
+	$BIN /bin/loadmod "$m"
 done
 
 # USB gadget serial console. The function is built in (CONFIG_USB_F_SERIAL).
