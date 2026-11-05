@@ -76,6 +76,8 @@ T=5
 [ -n "$UDC" ] && T=10
 [ -n "$BOUND" ] && T=15
 [ -n "$GS" ] && T=20
+# 25 s = a framebuffer registered (so the panel console should work)
+if [ -e /sys/class/graphics/fb0 ]; then T=25; fi
 ( $BIN sleep $T; $BIN reboot -f ) &
 # Never exit: if init dies the kernel panics and the phone reboots into Android.
 while true; do $BIN sleep 3600; done
