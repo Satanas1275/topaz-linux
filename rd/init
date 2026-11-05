@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/busybox sh
 # MEOW linux initramfs: bring up just enough to get a shell on the USB serial
 # gadget. Run on the phone, not on the host.
 BIN=/bin/busybox
@@ -56,7 +56,9 @@ GS=$($BIN grep ttyGS /proc/devices 2>/dev/null | $BIN awk '{print $1}' | $BIN he
 if [ -n "$GS" ]; then
 	$BIN mknod -m 600 /dev/ttyGS0 c "$GS" 0 2>/dev/null
 	echo "meow-linux: /dev/ttyGS0 major $GS"
+	$BIN getty -L 115200 ttyGS0 vt100 &
 fi
 
 echo "meow-linux: up"
-exec $BIN sh
+# Never exit: if init dies the kernel panics and the phone reboots into Android.
+while true; do $BIN sleep 3600; done
