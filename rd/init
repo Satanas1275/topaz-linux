@@ -24,7 +24,10 @@ echo "meow-linux: loading modules"
 # The prebuilt modules are built from the same 5.15.41 tree but a different
 # config, so their symbol CRCs differ. loadmod passes both ignore flags; the
 # kernel is built with CONFIG_MODULE_FORCE_LOAD=y so it accepts them.
+# Skip anything that is already built in (its /sys/module entry exists).
 for m in /modules/*.ko; do
+	n=$($BIN basename "$m" .ko | tr '-' '_')
+	[ -d /sys/module/$n ] && continue
 	$BIN /bin/loadmod "$m"
 done
 
