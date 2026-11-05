@@ -64,5 +64,8 @@ if [ -n "$GS" ]; then
 fi
 
 echo "meow-linux: up"
+# Heartbeat: the only way to tell whether the kernel reached /init, since the
+# console may not be drawing.  Reset after 30 s.
+( $BIN sleep 30; $BIN reboot -f ) &
 # Never exit: if init dies the kernel panics and the phone reboots into Android.
 while true; do $BIN sleep 3600; done
