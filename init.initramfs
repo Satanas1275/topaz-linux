@@ -17,6 +17,8 @@ mount -t devpts   devpts   /dev/pts  2>/dev/null
 [ -e /dev/tty ]     || mknod -m 666 /dev/tty     c 5 0
 [ -e /dev/random ]  || mknod -m 666 /dev/random  c 1 8
 [ -e /dev/urandom ] || mknod -m 666 /dev/urandom c 1 9
+# The framebuffer: /dev is a tmpfs here, so the node has to be made by hand.
+[ -e /dev/fb0 ] || mknod -m 666 /dev/fb0 c 29 0
 
 echo "meow-linux: kernel $($BIN cat /proc/version 2>/dev/null)"
 echo "meow-linux: loading modules"
@@ -67,6 +69,8 @@ if [ -n "$GS" ]; then
 fi
 
 echo "meow-linux: up"
+# Does the panel itself work? Draw a pattern straight on /dev/fb0.
+$BIN /bin/fbsplash >/dev/null 2>&1
 # Heartbeat: the delay tells us how far the USB got, since the console is dead.
 #   5 s = no UDC at all (the Qualcomm glue did not probe)
 #  10 s = a UDC exists but the gadget would not bind
