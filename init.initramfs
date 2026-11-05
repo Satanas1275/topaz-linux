@@ -32,6 +32,8 @@ for m in /modules/*.ko; do
 done
 
 # USB gadget serial console. The function is built in (CONFIG_USB_F_SERIAL).
+UDC=""
+BOUND=""
 $BIN mkdir -p /dev/config 2>/dev/null
 mount -t configfs configfs /dev/config 2>/dev/null
 if [ -d /dev/config/usb_gadget ]; then
@@ -49,7 +51,8 @@ if [ -d /dev/config/usb_gadget ]; then
 	UDC=$($BIN ls /sys/class/udc/ 2>/dev/null | $BIN head -1)
 	if [ -n "$UDC" ]; then
 		echo "$UDC" > $G/UDC 2>/dev/null
-		echo "meow-linux: udc $UDC"
+		BOUND=$($BIN cat $G/UDC 2>/dev/null)
+		echo "meow-linux: udc $UDC bound=$BOUND"
 	else
 		echo "meow-linux: no udc found"
 	fi
@@ -64,8 +67,15 @@ if [ -n "$GS" ]; then
 fi
 
 echo "meow-linux: up"
-# Heartbeat: the only way to tell whether the kernel reached /init, since the
-# console may not be drawing.  Reset after 30 s.
-( $BIN sleep 30; $BIN reboot -f ) &
+# Heartbeat: the delay tells us how far the USB got, since the console is dead.
+#   5 s = no UDC at all (the Qualcomm glue did not probe)
+#  10 s = a UDC exists but the gadget would not bind
+#  15 s = the gadget is bound to the UDC
+#  20 s = /dev/ttyGS0 exists
+T=5
+[ -n "$UDC" ] && T=10
+[ -n "$BOUND" ] && T=15
+[ -n "$GS" ] && T=20
+( $BIN sleep $T; $BIN reboot -f ) &
 # Never exit: if init dies the kernel panics and the phone reboots into Android.
 while true; do $BIN sleep 3600; done
