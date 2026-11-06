@@ -20,11 +20,6 @@ mount -t devpts   devpts   /dev/pts  2>/dev/null
 # The framebuffer: /dev is a tmpfs here, so the node has to be made by hand.
 [ -e /dev/fb0 ] || mknod -m 666 /dev/fb0 c 29 0
 [ -e /dev/mem ] || mknod -m 666 /dev/mem c 1 1
-# The meowfb misc device has a dynamic minor: read it from sysfs.
-MEOWFB_DEV=$($BIN cat /sys/class/misc/meowfb/dev 2>/dev/null)
-if [ -n "$MEOWFB_DEV" ]; then
-	$BIN mknod -m 666 /dev/meowfb c "${MEOWFB_DEV%%:*}" "${MEOWFB_DEV##*:}" 2>/dev/null
-fi
 
 echo "meow-linux: kernel $($BIN cat /proc/version 2>/dev/null)"
 echo "meow-linux: loading modules"
@@ -40,6 +35,13 @@ for m in /modules/*.ko; do
 done
 # the meowfb load error, if any (the message from loadmod)
 MODERR=$($BIN grep '^meowfb' /tmp/modlog 2>/dev/null | $BIN head -1)
+
+# The meowfb misc device has a dynamic minor: read it from sysfs, now that the
+# module is loaded.
+MEOWFB_DEV=$($BIN cat /sys/class/misc/meowfb/dev 2>/dev/null)
+if [ -n "$MEOWFB_DEV" ]; then
+	$BIN mknod -m 666 /dev/meowfb c "${MEOWFB_DEV%%:*}" "${MEOWFB_DEV##*:}" 2>/dev/null
+fi
 
 # USB gadget serial console. The function is built in (CONFIG_USB_F_SERIAL).
 UDC=""
@@ -77,9 +79,10 @@ if [ -n "$GS" ]; then
 fi
 
 echo "meow-linux: up"
-# Does the panel itself work? Draw a pattern straight on /dev/fb0.
-/bin/fbsplash >/dev/null 2>&1
+# Does the panel itself work? Draw a pattern straight on it.
+/bin/paneltest >/tmp/fb.log 2>&1
 FBSTAT=$?
+$BIN sed "s/^/[paneltest] /" /tmp/fb.log >/dev/console
 # Which printk console is registered, which fb driver took fb0, and is the
 # framebuffer console bound to a framebuffer?
 CONS=0

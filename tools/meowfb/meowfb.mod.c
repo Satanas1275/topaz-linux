@@ -28,10 +28,7 @@ MODULE_INFO(retpoline, "Y");
 static const struct modversion_info ____versions[]
 __used __section("__versions") = {
 	{ 0x15f7a249, "module_layout" },
-	{ 0xedc03953, "iounmap" },
 	{ 0x210563cc, "misc_deregister" },
-	{ 0x6b4b2933, "__ioremap" },
-	{ 0xaf56600a, "arm64_use_ng_mappings" },
 	{ 0x92997ed8, "_printk" },
 	{ 0x2c5d14a, "misc_register" },
 	{ 0x7c339477, "remap_pfn_range" },
@@ -40,4 +37,4 @@ __used __section("__versions") = {
 MODULE_INFO(depends, "");
 
 
-MODULE_INFO(scmversion, "gf72ed0f87b37-dirty");
+MODULE_INFO(scmversion, "g2da7a152ab42-dirty");
