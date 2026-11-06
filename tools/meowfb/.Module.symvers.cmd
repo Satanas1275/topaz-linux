@@ -1,1 +1,1 @@
-cmd_/home/satanas/linux-topaz/tools/meowfb/Module.symvers := sed 's/\.ko$$/\.o/' /home/satanas/linux-topaz/tools/meowfb/modules.order | scripts/mod/modpost -m  -E -o /home/satanas/linux-topaz/tools/meowfb/Module.symvers -e -v g5533f7e32139-dirty -i Module.symvers   -n -T -
+cmd_/home/satanas/linux-topaz/tools/meowfb/Module.symvers := sed 's/\.ko$$/\.o/' /home/satanas/linux-topaz/tools/meowfb/modules.order | scripts/mod/modpost -m  -E -o /home/satanas/linux-topaz/tools/meowfb/Module.symvers -e -v g6574c211592b-dirty -i Module.symvers   -n -T -

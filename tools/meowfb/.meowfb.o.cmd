@@ -1322,6 +1322,7 @@ deps_/home/satanas/linux-topaz/tools/meowfb/meowfb.o := \
   include/uapi/linux/i2c.h \
   include/linux/backlight.h \
     $(wildcard include/config/BACKLIGHT_CLASS_DEVICE) \
+  include/linux/miscdevice.h \
   include/linux/platform_device.h \
     $(wildcard include/config/HIBERNATE_CALLBACKS) \
     $(wildcard include/config/SUPERH) \
