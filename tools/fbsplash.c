@@ -23,17 +23,17 @@ int main(void)
 	fd = open("/dev/fb0", O_RDWR);
 	if (fd < 0) {
 		printf("fbsplash: no /dev/fb0\n");
-		return 1;
+		return 1;			/* heartbeat 30 s */
 	}
 	if (ioctl(fd, FBIOGET_VSCREENINFO, &vi) < 0 ||
 	    ioctl(fd, FBIOGET_FSCREENINFO, &fi) < 0) {
 		printf("fbsplash: ioctl failed\n");
-		return 1;
+		return 2;			/* heartbeat 33 s */
 	}
 	p = mmap(NULL, fi.smem_len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 	if (p == MAP_FAILED) {
 		printf("fbsplash: mmap failed\n");
-		return 1;
+		return 3;			/* heartbeat 36 s */
 	}
 	printf("fbsplash: %dx%d bpp %d stride %ld len %ld\n",
 	       vi.xres, vi.yres, vi.bits_per_pixel, fi.line_length, fi.smem_len);
