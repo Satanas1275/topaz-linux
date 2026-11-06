@@ -93,9 +93,10 @@ mdp*)		 FN=4 ;;
 esac
 # Heartbeat: T = 10 + FBSTAT, the fbsplash status (see fbsplash.c):
 #   0 = drawn via /dev/fb0, 6 = drawn via /dev/mem,
-#   10 + errno = /dev/mem open failed,   20 + errno = /dev/fb0 open failed,
-#   30 + errno = fb0 ioctl failed,       40 + errno = fb0 mmap failed,
-#   50 + errno = /dev/mem mmap failed
+#   20/21/29 = fb0 open (ENOENT/EACCES/other)   30/31/32/39 = fb0 ioctl
+#   40/41/42/43 = fb0 mmap (ENODEV/EINVAL/EACCES/other)
+#   50/51/52/59 = /dev/mem open (ENOENT/EACCES/EPERM/other)
+#   60/61/62/63/69 = /dev/mem mmap (EACCES/EPERM/EINVAL/EBUSY/other)
 T=$(( 10 + FBSTAT ))
 ( $BIN sleep $T; $BIN reboot -f ) &
 # Never exit: if init dies the kernel panics and the phone reboots into Android.
