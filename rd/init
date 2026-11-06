@@ -90,18 +90,15 @@ simplefb*)	 FN=1 ;;
 drm*|simpledrm*) FN=2 ;;
 msm_drm*|mdp*)	 FN=3 ;;
 esac
-# Heartbeat: T = 100*CONS + 10*VTC + 10*FN + FBSTAT
-#   CONS:   0 = none, 1 = tty0, 2 = ttyGS0, 3 = other
-#   VTC:    1 = fbcon bound to a framebuffer
-#   FN:     1 = simplefb, 2 = drm, 3 = msm_drm/mdp, 4 = other
-#   FBSTAT: 0 = drawn via fb0, 6 = drawn via /dev/mem,
-#           10/20/30/40/50 + errno = the failure point (see fbsplash.c)
-# FBSTAT >= 10 is reported as 300 + FBSTAT.
-T=$(( 100 * CONS + 10 * VTC + 10 * FN + FBSTAT ))
-case "$FBSTAT" in
-[0-9]) ;;
-*) T=$(( 300 + FBSTAT )) ;;
-esac
+# Heartbeat: T = 10*CONS + 5*VTC + FN + 50*FBLEVEL  (max 139 s)
+#   CONS: 0 = none, 1 = tty0, 2 = ttyGS0, 3 = other console
+#   VTC:  1 = fbcon bound to a framebuffer
+#   FN:   1 = simplefb, 2 = drm, 3 = msm_drm/mdp, 4 = other driver
+#   FBLEVEL: 0 = drawn via fb0, 1 = drawn via /dev/mem, 2 = failed
+FBLEVEL=2
+[ "$FBSTAT" = 0 ] && FBLEVEL=0
+[ "$FBSTAT" = 6 ] && FBLEVEL=1
+T=$(( 10 * CONS + 5 * VTC + FN + 50 * FBLEVEL ))
 ( $BIN sleep $T; $BIN reboot -f ) &
 # Never exit: if init dies the kernel panics and the phone reboots into Android.
 while true; do $BIN sleep 3600; done
