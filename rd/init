@@ -19,6 +19,7 @@ mount -t devpts   devpts   /dev/pts  2>/dev/null
 [ -e /dev/urandom ] || mknod -m 666 /dev/urandom c 1 9
 # The framebuffer: /dev is a tmpfs here, so the node has to be made by hand.
 [ -e /dev/fb0 ] || mknod -m 666 /dev/fb0 c 29 0
+[ -e /dev/mem ] || mknod -m 666 /dev/mem c 1 1
 
 echo "meow-linux: kernel $($BIN cat /proc/version 2>/dev/null)"
 echo "meow-linux: loading modules"
@@ -83,17 +84,16 @@ T=5
 [ -n "$GS" ] && T=20
 # 25 s = a framebuffer registered (so the panel console should work)
 if [ -e /sys/class/graphics/fb0 ]; then T=25; fi
-# the panel draw: 39 = via /dev/fb0, 46 = via /dev/mem, 30 = no fb0,
-# 33 = fb0 ioctl failed, 36 = fb0 mmap failed, 40 = no /dev/mem,
-# 43 = /dev/mem mmap failed
+# the panel draw, 3 s apart: 30 = drawn via fb0, 33 = no fb0, 36 = ioctl,
+# 39 = mmap, 42 = no /dev/mem, 45 = /dev/mem mmap failed, 48 = drawn via /dev/mem
 case "$FBSTAT" in
-0) T=39 ;;
-6) T=46 ;;
-1) T=30 ;;
-2) T=33 ;;
-3) T=36 ;;
-4) T=40 ;;
-5) T=43 ;;
+0) T=30 ;;
+1) T=33 ;;
+2) T=36 ;;
+3) T=39 ;;
+4) T=42 ;;
+5) T=45 ;;
+6) T=48 ;;
 esac
 ( $BIN sleep $T; $BIN reboot -f ) &
 # Never exit: if init dies the kernel panics and the phone reboots into Android.
