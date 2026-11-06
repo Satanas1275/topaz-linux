@@ -63,12 +63,13 @@ int main(void)
 	fd = open("/dev/fb0", O_RDWR);
 	if (fd < 0) {
 		printf("fbsplash: no /dev/fb0: %s\n", strerror(errno));
-		return 20 + errno;
+		return errno == ENOENT ? 20 : errno == EACCES ? 21 : 29;
 	}
 	if (ioctl(fd, FBIOGET_VSCREENINFO, &vi) < 0 ||
 	    ioctl(fd, FBIOGET_FSCREENINFO, &fi) < 0) {
 		printf("fbsplash: fb0 ioctl: %s\n", strerror(errno));
-		rc = 30 + errno;
+		rc = errno == ENOTTY ? 30 : errno == EINVAL ? 31 :
+		     errno == EACCES ? 32 : 39;
 	} else {
 		printf("fbsplash: fb0 %dx%d bpp %d stride %ld len %ld\n",
 		       vi.xres, vi.yres, vi.bits_per_pixel,
@@ -77,7 +78,8 @@ int main(void)
 			 MAP_SHARED, fd, 0);
 		if (p == MAP_FAILED) {
 			printf("fbsplash: fb0 mmap: %s\n", strerror(errno));
-			rc = 40 + errno;
+			rc = errno == ENODEV ? 40 : errno == EINVAL ? 41 :
+			     errno == EACCES ? 42 : 43;
 		} else {
 			draw(p, fi.line_length, vi.xres, vi.yres);
 			printf("fbsplash: drawn through /dev/fb0\n");
@@ -88,13 +90,17 @@ int main(void)
 	fd = open("/dev/mem", O_RDWR | O_SYNC);
 	if (fd < 0) {
 		printf("fbsplash: no /dev/mem: %s (rc %d)\n", strerror(errno), rc);
-		return rc ? rc : 10 + errno;
+		if (rc)
+			return rc;
+		return errno == ENOENT ? 50 : errno == EACCES ? 51 :
+		       errno == EPERM ? 52 : 59;
 	}
 	p = mmap(NULL, (size_t)FB_STRIDE * FB_H, PROT_READ | PROT_WRITE,
 		 MAP_SHARED, fd, FB_PHYS);
 	if (p == MAP_FAILED) {
 		printf("fbsplash: /dev/mem mmap: %s\n", strerror(errno));
-		return 50 + errno;
+		return errno == EACCES ? 60 : errno == EPERM ? 61 :
+		       errno == EINVAL ? 62 : errno == EBUSY ? 63 : 69;
 	}
 	draw(p, FB_STRIDE, FB_W, FB_H);
 	printf("fbsplash: drawn through /dev/mem\n");
