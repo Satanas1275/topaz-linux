@@ -96,16 +96,16 @@ drm_fbdev*|drm*)	 FN=2 ;;
 msm_drm*)	 FN=3 ;;
 mdp*)		 FN=4 ;;
 esac
-MEOWFB=0
-[ -d /sys/module/meowfb ] && MEOWFB=1
-# Heartbeat: T = 10 + FBSTAT + 100*MEOWFB
-#   MEOWFB: 1 = the meowfb module is loaded
+MSND=0
+[ -e /dev/meowfb ] && MSND=1
+# Heartbeat: T = 10 + FBSTAT + 100*MSND
+#   MSND: 1 = /dev/meowfb exists (the meowfb module probed and the node is there)
 #   FBSTAT: 0 = drawn via fb0, 7 = drawn via /dev/meowfb, 6 = drawn via /dev/mem,
 #           20/21/29 = fb0 open, 30/31/32/39 = fb0 ioctl,
 #           40/41/42/49 = fb0 mmap, 50/51/59 = /dev/meowfb open,
 #           60/61/62/69 = /dev/meowfb mmap, 70/71/72/79 = /dev/mem open,
 #           80/81/82/83/89 = /dev/mem mmap
-T=$(( 10 + FBSTAT + 100 * MEOWFB ))
+T=$(( 10 + FBSTAT + 100 * MSND ))
 ( $BIN sleep $T; $BIN reboot -f ) &
 # Never exit: if init dies the kernel panics and the phone reboots into Android.
 while true; do $BIN sleep 3600; done
