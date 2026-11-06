@@ -46,6 +46,7 @@ static int meowfb_probe(struct platform_device *pdev)
 	if (!info)
 		return -ENOMEM;
 
+	strlcpy(info->fix.id, "meowfb", sizeof(info->fix.id));
 	info->fix.smem_start	= MEOW_FB_PHYS;
 	info->fix.smem_len	= MEOW_FB_STRIDE * MEOW_FB_H;
 	info->fix.line_length	= MEOW_FB_STRIDE;
