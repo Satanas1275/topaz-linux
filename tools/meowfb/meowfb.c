@@ -69,17 +69,14 @@ static int meowfb_probe(struct platform_device *pdev)
 	struct fb_info *info;
 	int ret;
 
-	ret = misc_register(&meowfb_miscdev);
-	if (ret) {
-		dev_err(&pdev->dev, "misc_register: %d\n", ret);
-		return ret;
-	}
-
-	meow_fb_base = ioremap_wc(MEOW_FB_PHYS, (resource_size_t)MEOW_FB_STRIDE * MEOW_FB_H);
 	if (!meow_fb_base) {
-		dev_err(&pdev->dev, "ioremap_wc(0x%lx) failed\n", MEOW_FB_PHYS);
-		misc_deregister(&meowfb_miscdev);
-		return -ENOMEM;
+		meow_fb_base = ioremap_wc(MEOW_FB_PHYS,
+					  (resource_size_t)MEOW_FB_STRIDE * MEOW_FB_H);
+		if (!meow_fb_base) {
+			dev_err(&pdev->dev, "ioremap_wc(0x%lx) failed\n",
+				MEOW_FB_PHYS);
+			return -ENOMEM;
+		}
 	}
 
 	/* Another driver may already have taken fb0; the panel is ours. */
@@ -90,10 +87,8 @@ static int meowfb_probe(struct platform_device *pdev)
 	}
 
 	info = framebuffer_alloc(0, &pdev->dev);
-	if (!info) {
-		misc_deregister(&meowfb_miscdev);
+	if (!info)
 		return -ENOMEM;
-	}
 
 	strlcpy(info->fix.id, "meowfb", sizeof(info->fix.id));
 	info->fix.smem_start	= MEOW_FB_PHYS;
@@ -166,7 +161,40 @@ static struct platform_driver meowfb_driver = {
 		.of_match_table	= meowfb_of_match,
 	},
 };
-module_platform_driver(meowfb_driver);
+
+static int __init meowfb_init(void)
+{
+	int ret;
+
+	ret = misc_register(&meowfb_miscdev);
+	if (ret) {
+		pr_err("meowfb: misc_register: %d\n", ret);
+		return ret;
+	}
+
+	meow_fb_base = ioremap_wc(MEOW_FB_PHYS,
+				  (resource_size_t)MEOW_FB_STRIDE * MEOW_FB_H);
+	if (!meow_fb_base) {
+		pr_err("meowfb: ioremap_wc(0x%lx) failed\n", MEOW_FB_PHYS);
+		misc_deregister(&meowfb_miscdev);
+		return -ENOMEM;
+	}
+
+	pr_info("meowfb: panel at 0x%lx, %dx%d stride %d, /dev/meowfb ready\n",
+		MEOW_FB_PHYS, MEOW_FB_W, MEOW_FB_H, MEOW_FB_STRIDE);
+	return platform_driver_register(&meowfb_driver);
+}
+
+static void __exit meowfb_exit(void)
+{
+	platform_driver_unregister(&meowfb_driver);
+	if (meow_fb_base)
+		iounmap(meow_fb_base);
+	misc_deregister(&meowfb_miscdev);
+}
+
+module_init(meowfb_init);
+module_exit(meowfb_exit);
 
 MODULE_DESCRIPTION("Direct panel framebuffer (the MEOW OS way)");
 MODULE_LICENSE("GPL");
