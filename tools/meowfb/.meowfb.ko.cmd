@@ -1,0 +1,1 @@
+cmd_/home/satanas/linux-topaz/tools/meowfb/meowfb.ko := aarch64-linux-gnu-ld -r -EL  -maarch64elf --build-id=sha1  -T scripts/module.lds -o /home/satanas/linux-topaz/tools/meowfb/meowfb.ko /home/satanas/linux-topaz/tools/meowfb/meowfb.o /home/satanas/linux-topaz/tools/meowfb/meowfb.mod.o;  make -f ./arch/arm64/Makefile.postlink /home/satanas/linux-topaz/tools/meowfb/meowfb.ko

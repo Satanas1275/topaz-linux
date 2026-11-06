@@ -1,0 +1,1 @@
+cmd_/home/satanas/linux-topaz/tools/meowfb/Module.symvers := sed 's/\.ko$$/\.o/' /home/satanas/linux-topaz/tools/meowfb/modules.order | scripts/mod/modpost -m  -E -o /home/satanas/linux-topaz/tools/meowfb/Module.symvers -e -v ge1a5f8c9cdbb -i Module.symvers   -n -T -
