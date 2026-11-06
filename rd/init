@@ -70,8 +70,8 @@ fi
 
 echo "meow-linux: up"
 # Does the panel itself work? Draw a pattern straight on /dev/fb0.
-FBSTAT=0
-if $BIN /bin/fbsplash >/dev/null 2>&1; then FBSTAT=35; else FBSTAT=30; fi
+$BIN /bin/fbsplash >/dev/null 2>&1
+FBSTAT=$?
 # Heartbeat: the delay tells us how far the USB got, since the console is dead.
 #   5 s = no UDC at all (the Qualcomm glue did not probe)
 #  10 s = a UDC exists but the gadget would not bind
@@ -83,9 +83,13 @@ T=5
 [ -n "$GS" ] && T=20
 # 25 s = a framebuffer registered (so the panel console should work)
 if [ -e /sys/class/graphics/fb0 ]; then T=25; fi
-# 30 s = /dev/fb0 missing / mmap failed, 35 s = the pattern was drawn
-[ "$FBSTAT" = 30 ] && T=30
-[ "$FBSTAT" = 35 ] && T=35
+# the fb0 draw: 39 = drawn, 30 = no /dev/fb0, 33 = ioctl, 36 = mmap
+case "$FBSTAT" in
+0) T=39 ;;
+1) T=30 ;;
+2) T=33 ;;
+3) T=36 ;;
+esac
 ( $BIN sleep $T; $BIN reboot -f ) &
 # Never exit: if init dies the kernel panics and the phone reboots into Android.
 while true; do $BIN sleep 3600; done
