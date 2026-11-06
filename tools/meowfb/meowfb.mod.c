@@ -37,6 +37,7 @@ __used __section("__versions") = {
 	{ 0xe56496d3, "framebuffer_release" },
 	{ 0x773c6a94, "_dev_err" },
 	{ 0x99c64543, "register_framebuffer" },
+	{ 0x5792f848, "strlcpy" },
 	{ 0x5dc5f1ad, "framebuffer_alloc" },
 	{ 0x9a707e4e, "registered_fb" },
 	{ 0x6b4b2933, "__ioremap" },
@@ -50,4 +51,4 @@ MODULE_INFO(depends, "");
 MODULE_ALIAS("of:N*T*Cmeow,fb");
 MODULE_ALIAS("of:N*T*Cmeow,fbC*");
 
-MODULE_INFO(scmversion, "ge1a5f8c9cdbb");
+MODULE_INFO(scmversion, "g5533f7e32139-dirty");
