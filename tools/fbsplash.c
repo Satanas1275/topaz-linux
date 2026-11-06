@@ -9,14 +9,15 @@
  * Exit status (reported through the heartbeat delay by /init):
  *   0  drawn through /dev/fb0
  *   6  drawn through /dev/mem
- *   1  no /dev/fb0 and no /dev/mem
- *   2  fb0 ioctl failed, and no /dev/mem
- *   3  fb0 mmap failed, and no /dev/mem
- *   4  /dev/mem missing
- *   5  /dev/mem mmap failed
+ *   10 + errno  /dev/mem could not be opened
+ *   20 + errno  /dev/fb0 could not be opened
+ *   30 + errno  fb0 ioctl failed
+ *   40 + errno  fb0 mmap failed
+ *   50 + errno  /dev/mem mmap failed
  */
 #include <stdio.h>
 #include <string.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/mman.h>
@@ -54,46 +55,46 @@ static void draw(unsigned char *p, long stride, int w, int h)
 
 int main(void)
 {
-	int fd, rc = 1;
+	int fd, rc = 0;
 	struct fb_var_screeninfo vi;
 	struct fb_fix_screeninfo fi;
 	unsigned char *p;
 
 	fd = open("/dev/fb0", O_RDWR);
-	if (fd >= 0) {
-		if (ioctl(fd, FBIOGET_VSCREENINFO, &vi) < 0 ||
-		    ioctl(fd, FBIOGET_FSCREENINFO, &fi) < 0) {
-			printf("fbsplash: fb0 ioctl failed\n");
-			rc = 2;
-		} else {
-			printf("fbsplash: fb0 %dx%d bpp %d stride %ld len %ld\n",
-			       vi.xres, vi.yres, vi.bits_per_pixel,
-			       fi.line_length, fi.smem_len);
-			p = mmap(NULL, fi.smem_len, PROT_READ | PROT_WRITE,
-				 MAP_SHARED, fd, 0);
-			if (p == MAP_FAILED) {
-				printf("fbsplash: fb0 mmap failed\n");
-				rc = 3;
-			} else {
-				draw(p, fi.line_length, vi.xres, vi.yres);
-				printf("fbsplash: drawn through /dev/fb0\n");
-				return 0;
-			}
-		}
+	if (fd < 0) {
+		printf("fbsplash: no /dev/fb0: %s\n", strerror(errno));
+		return 20 + errno;
+	}
+	if (ioctl(fd, FBIOGET_VSCREENINFO, &vi) < 0 ||
+	    ioctl(fd, FBIOGET_FSCREENINFO, &fi) < 0) {
+		printf("fbsplash: fb0 ioctl: %s\n", strerror(errno));
+		rc = 30 + errno;
 	} else {
-		printf("fbsplash: no /dev/fb0\n");
+		printf("fbsplash: fb0 %dx%d bpp %d stride %ld len %ld\n",
+		       vi.xres, vi.yres, vi.bits_per_pixel,
+		       fi.line_length, fi.smem_len);
+		p = mmap(NULL, fi.smem_len, PROT_READ | PROT_WRITE,
+			 MAP_SHARED, fd, 0);
+		if (p == MAP_FAILED) {
+			printf("fbsplash: fb0 mmap: %s\n", strerror(errno));
+			rc = 40 + errno;
+		} else {
+			draw(p, fi.line_length, vi.xres, vi.yres);
+			printf("fbsplash: drawn through /dev/fb0\n");
+			return 0;
+		}
 	}
 
 	fd = open("/dev/mem", O_RDWR | O_SYNC);
 	if (fd < 0) {
-		printf("fbsplash: no /dev/mem (rc %d)\n", rc);
-		return rc ? rc : 4;
+		printf("fbsplash: no /dev/mem: %s (rc %d)\n", strerror(errno), rc);
+		return rc ? rc : 10 + errno;
 	}
 	p = mmap(NULL, (size_t)FB_STRIDE * FB_H, PROT_READ | PROT_WRITE,
 		 MAP_SHARED, fd, FB_PHYS);
 	if (p == MAP_FAILED) {
-		printf("fbsplash: /dev/mem mmap failed\n");
-		return 5;
+		printf("fbsplash: /dev/mem mmap: %s\n", strerror(errno));
+		return 50 + errno;
 	}
 	draw(p, FB_STRIDE, FB_W, FB_H);
 	printf("fbsplash: drawn through /dev/mem\n");
