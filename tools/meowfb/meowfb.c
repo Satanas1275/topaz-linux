@@ -19,6 +19,15 @@
 static void __iomem *meow_fb_base;
 static struct fb_info *meow_info;
 
+/* the kernel keeps this as an anonymous struct inside fb_info */
+struct meow_apertures {
+	unsigned int count;
+	struct {
+		resource_size_t base;
+		resource_size_t size;
+	} ranges[1];
+};
+
 /*
  * A plain character device: userspace mmaps the panel's physical memory and
  * draws on it directly, exactly the way the MEOW OS shim does. This is the
@@ -108,12 +117,14 @@ static int meowfb_probe(struct platform_device *pdev)
 	info->fbops		= &meowfb_ops;
 	info->flags		= FBINFO_DEFAULT | FBINFO_MISC_FIRMWARE;
 
-	info->apertures = kzalloc(sizeof(struct apertures) + sizeof(struct aperture),
-				  GFP_KERNEL);
-	if (info->apertures) {
-		info->apertures->count = 1;
-		info->apertures->ranges[0].base = MEOW_FB_PHYS;
-		info->apertures->ranges[0].size = MEOW_FB_STRIDE * MEOW_FB_H;
+	struct meow_apertures *ap;
+
+	ap = kzalloc(sizeof(*ap), GFP_KERNEL);
+	if (ap) {
+		ap->count = 1;
+		ap->ranges[0].base = MEOW_FB_PHYS;
+		ap->ranges[0].size = MEOW_FB_STRIDE * MEOW_FB_H;
+		info->apertures = (void *)ap;
 	}
 
 	ret = register_framebuffer(info);
