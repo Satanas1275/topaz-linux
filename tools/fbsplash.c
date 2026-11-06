@@ -79,7 +79,7 @@ int main(void)
 		if (p == MAP_FAILED) {
 			printf("fbsplash: fb0 mmap: %s\n", strerror(errno));
 			rc = errno == ENODEV ? 40 : errno == EINVAL ? 41 :
-			     errno == EACCES ? 42 : 43;
+			     errno == EACCES ? 42 : 49;
 		} else {
 			draw(p, fi.line_length, vi.xres, vi.yres);
 			printf("fbsplash: drawn through /dev/fb0\n");
@@ -87,20 +87,39 @@ int main(void)
 		}
 	}
 
+	/* the meowfb module: the panel's physical memory, mmaped directly */
+	fd = open("/dev/meowfb", O_RDWR);
+	if (fd >= 0) {
+		p = mmap(NULL, (size_t)FB_STRIDE * FB_H, PROT_READ | PROT_WRITE,
+			 MAP_SHARED, fd, 0);
+		if (p == MAP_FAILED) {
+			printf("fbsplash: /dev/meowfb mmap: %s\n", strerror(errno));
+			return errno == EACCES ? 60 : errno == EPERM ? 61 :
+			       errno == EINVAL ? 62 : 69;
+		}
+		draw(p, FB_STRIDE, FB_W, FB_H);
+		printf("fbsplash: drawn through /dev/meowfb\n");
+		return 7;
+	}
+	if (!rc) {
+		printf("fbsplash: no /dev/meowfb: %s\n", strerror(errno));
+		rc = errno == ENOENT ? 50 : errno == EACCES ? 51 : 59;
+	}
+
 	fd = open("/dev/mem", O_RDWR | O_SYNC);
 	if (fd < 0) {
 		printf("fbsplash: no /dev/mem: %s (rc %d)\n", strerror(errno), rc);
 		if (rc)
 			return rc;
-		return errno == ENOENT ? 50 : errno == EACCES ? 51 :
-		       errno == EPERM ? 52 : 59;
+		return errno == ENOENT ? 70 : errno == EACCES ? 71 :
+		       errno == EPERM ? 72 : 79;
 	}
 	p = mmap(NULL, (size_t)FB_STRIDE * FB_H, PROT_READ | PROT_WRITE,
 		 MAP_SHARED, fd, FB_PHYS);
 	if (p == MAP_FAILED) {
 		printf("fbsplash: /dev/mem mmap: %s\n", strerror(errno));
-		return errno == EACCES ? 60 : errno == EPERM ? 61 :
-		       errno == EINVAL ? 62 : errno == EBUSY ? 63 : 69;
+		return errno == EACCES ? 80 : errno == EPERM ? 81 :
+		       errno == EINVAL ? 82 : errno == EBUSY ? 83 : 89;
 	}
 	draw(p, FB_STRIDE, FB_W, FB_H);
 	printf("fbsplash: drawn through /dev/mem\n");

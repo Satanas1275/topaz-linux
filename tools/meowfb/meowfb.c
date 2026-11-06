@@ -6,6 +6,8 @@
 #include <linux/kernel.h>
 #include <linux/fb.h>
 #include <linux/io.h>
+#include <linux/mm.h>
+#include <linux/miscdevice.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
 
@@ -16,6 +18,35 @@
 
 static void __iomem *meow_fb_base;
 static struct fb_info *meow_info;
+
+/*
+ * A plain character device: userspace mmaps the panel's physical memory and
+ * draws on it directly, exactly the way the MEOW OS shim does. This is the
+ * reliable path while the framebuffer-console side is being sorted out.
+ */
+static int meowfb_mmap(struct file *file, struct vm_area_struct *vma)
+{
+	unsigned long size = vma->vm_end - vma->vm_start;
+
+	if (size > (unsigned long)MEOW_FB_STRIDE * MEOW_FB_H)
+		return -EINVAL;
+	vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
+	if (io_remap_pfn_range(vma, vma->vm_start, MEOW_FB_PHYS >> PAGE_SHIFT,
+			       size, vma->vm_page_prot))
+		return -EAGAIN;
+	return 0;
+}
+
+static const struct file_operations meowfb_fops = {
+	.owner	= THIS_MODULE,
+	.mmap	= meowfb_mmap,
+};
+
+static struct miscdevice meowfb_miscdev = {
+	.minor	= MISC_DYNAMIC_MINOR,
+	.name	= "meowfb",
+	.fops	= &meowfb_fops,
+};
 
 static struct fb_ops meowfb_ops = {
 	.owner		= THIS_MODULE,
@@ -29,9 +60,16 @@ static int meowfb_probe(struct platform_device *pdev)
 	struct fb_info *info;
 	int ret;
 
+	ret = misc_register(&meowfb_miscdev);
+	if (ret) {
+		dev_err(&pdev->dev, "misc_register: %d\n", ret);
+		return ret;
+	}
+
 	meow_fb_base = ioremap_wc(MEOW_FB_PHYS, (resource_size_t)MEOW_FB_STRIDE * MEOW_FB_H);
 	if (!meow_fb_base) {
 		dev_err(&pdev->dev, "ioremap_wc(0x%lx) failed\n", MEOW_FB_PHYS);
+		misc_deregister(&meowfb_miscdev);
 		return -ENOMEM;
 	}
 
@@ -43,8 +81,10 @@ static int meowfb_probe(struct platform_device *pdev)
 	}
 
 	info = framebuffer_alloc(0, &pdev->dev);
-	if (!info)
+	if (!info) {
+		misc_deregister(&meowfb_miscdev);
 		return -ENOMEM;
+	}
 
 	strlcpy(info->fix.id, "meowfb", sizeof(info->fix.id));
 	info->fix.smem_start	= MEOW_FB_PHYS;
@@ -62,25 +102,38 @@ static int meowfb_probe(struct platform_device *pdev)
 	info->var.blue		= (struct fb_bitfield){ 0, 8, 0 };
 	info->var.transp	= (struct fb_bitfield){ 24, 8, 0 };
 	info->var.activate	= FB_ACTIVATE_NOW;
+	info->var.height	= -1;
+	info->var.width		= -1;
 	info->screen_base	= meow_fb_base;
 	info->fbops		= &meowfb_ops;
 	info->flags		= FBINFO_DEFAULT | FBINFO_MISC_FIRMWARE;
 
-	ret = register_framebuffer(info);
-	if (ret) {
-		dev_err(&pdev->dev, "register_framebuffer: %d\n", ret);
-		framebuffer_release(info);
-		return ret;
+	info->apertures = kzalloc(sizeof(struct apertures) + sizeof(struct aperture),
+				  GFP_KERNEL);
+	if (info->apertures) {
+		info->apertures->count = 1;
+		info->apertures->ranges[0].base = MEOW_FB_PHYS;
+		info->apertures->ranges[0].size = MEOW_FB_STRIDE * MEOW_FB_H;
 	}
 
-	meow_info = info;
-	dev_info(&pdev->dev, "fb%d: %dx%d stride %d at 0x%lx\n", info->node,
-		 MEOW_FB_W, MEOW_FB_H, MEOW_FB_STRIDE, MEOW_FB_PHYS);
+	ret = register_framebuffer(info);
+	if (ret) {
+		/* not fatal: /dev/meowfb still gives userspace the panel */
+		dev_err(&pdev->dev, "register_framebuffer: %d\n", ret);
+		framebuffer_release(info);
+		info = NULL;
+	} else {
+		meow_info = info;
+		dev_info(&pdev->dev, "fb%d: %dx%d stride %d at 0x%lx\n",
+			 info->node, MEOW_FB_W, MEOW_FB_H, MEOW_FB_STRIDE,
+			 MEOW_FB_PHYS);
+	}
 	return 0;
 }
 
 static int meowfb_remove(struct platform_device *pdev)
 {
+	misc_deregister(&meowfb_miscdev);
 	if (meow_info)
 		unregister_framebuffer(meow_info);
 	if (meow_fb_base)
