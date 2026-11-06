@@ -73,28 +73,18 @@ echo "meow-linux: up"
 # Does the panel itself work? Draw a pattern straight on /dev/fb0.
 /bin/fbsplash >/dev/null 2>&1
 FBSTAT=$?
-# Heartbeat: the delay tells us how far the USB got, since the console is dead.
-#   5 s = no UDC at all (the Qualcomm glue did not probe)
-#  10 s = a UDC exists but the gadget would not bind
-#  15 s = the gadget is bound to the UDC
-#  20 s = /dev/ttyGS0 exists
-T=5
-[ -n "$UDC" ] && T=10
-[ -n "$BOUND" ] && T=15
-[ -n "$GS" ] && T=20
-# 25 s = a framebuffer registered (so the panel console should work)
-if [ -e /sys/class/graphics/fb0 ]; then T=25; fi
-# the panel draw, 3 s apart: 30 = drawn via fb0, 33 = no fb0, 36 = ioctl,
-# 39 = mmap, 42 = no /dev/mem, 45 = /dev/mem mmap failed, 48 = drawn via /dev/mem
-case "$FBSTAT" in
-0) T=30 ;;
-1) T=33 ;;
-2) T=36 ;;
-3) T=39 ;;
-4) T=42 ;;
-5) T=45 ;;
-6) T=48 ;;
+FBN=$($BIN cat /sys/class/graphics/fb0/name 2>/dev/null)
+case "$FBN" in
+simplefb*)	 FN=1 ;;
+drm*|simpledrm*) FN=2 ;;
+msm_drm*|mdp*)	 FN=3 ;;
+*)		 FN=4 ;;
 esac
+# Heartbeat: T = 60 + FN + 5*FBSTAT
+#   FN: 1 = simplefb, 2 = drm, 3 = msm_drm, 4 = other driver
+#   FBSTAT: 0 = drawn via fb0, 1 = no fb0, 2 = ioctl failed, 3 = mmap failed,
+#           4 = no /dev/mem, 5 = /dev/mem mmap failed, 6 = drawn via /dev/mem
+T=$(( 60 + FN + 5 * FBSTAT ))
 ( $BIN sleep $T; $BIN reboot -f ) &
 # Never exit: if init dies the kernel panics and the phone reboots into Android.
 while true; do $BIN sleep 3600; done
