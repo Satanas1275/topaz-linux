@@ -1,19 +1,17 @@
 /*
- * Draw on the panel to find out why the kernel console is not visible.
+ * Draw on the panel to find out whether the kernel can reach the display at
+ * all. Every path is tried in turn, whatever the previous one did:
  *
- * The ABL splash framebuffer is at 0x5c000000 and the shim writes there with
- * the MMU off, so the address is known good. If /dev/fb0 cannot be used, fall
- * back to /dev/mem and map that physical address directly: if the panel changes
- * then the kernel's memory mapping works and the problem is the fb driver.
+ *   1. /dev/fb0     the framebuffer (ioctl + mmap)
+ *   2. /dev/meowfb  the meowfb misc device (direct mmap of 0x5c000000)
+ *   3. /dev/mem     the physical memory (direct mmap of 0x5c000000)
  *
- * Exit status (reported through the heartbeat delay by /init):
+ * The panel is already programmed by the bootloader, so a direct mapping is
+ * enough. Exit status (reported through the heartbeat delay by /init):
  *   0  drawn through /dev/fb0
+ *   7  drawn through /dev/meowfb
  *   6  drawn through /dev/mem
- *   10 + errno  /dev/mem could not be opened
- *   20 + errno  /dev/fb0 could not be opened
- *   30 + errno  fb0 ioctl failed
- *   40 + errno  fb0 mmap failed
- *   50 + errno  /dev/mem mmap failed
+ *   otherwise the errno of the last attempt
  */
 #include <stdio.h>
 #include <string.h>
@@ -34,7 +32,7 @@ static void draw(unsigned char *p, long stride, int w, int h)
 	long i;
 	int x, y;
 
-	for (i = 0; i + 3 < (long)stride * h; i += 4) {
+	for (i = 0; i + 3 < stride * h; i += 4) {
 		p[i + 0] = 0x00;
 		p[i + 1] = 0xff;
 		p[i + 2] = 0x00;
@@ -53,75 +51,76 @@ static void draw(unsigned char *p, long stride, int w, int h)
 	}
 }
 
-int main(void)
+static int draw_via_fb0(void)
 {
-	int fd, rc = 0;
 	struct fb_var_screeninfo vi;
 	struct fb_fix_screeninfo fi;
 	unsigned char *p;
+	int fd;
 
 	fd = open("/dev/fb0", O_RDWR);
 	if (fd < 0) {
-		printf("fbsplash: no /dev/fb0: %s\n", strerror(errno));
-		return errno == ENOENT ? 20 : errno == EACCES ? 21 : 29;
+		printf("fbsplash: /dev/fb0 open: %s\n", strerror(errno));
+		return -errno;
 	}
-	if (ioctl(fd, FBIOGET_VSCREENINFO, &vi) < 0 ||
-	    ioctl(fd, FBIOGET_FSCREENINFO, &fi) < 0) {
+	if (ioctl(fd, FBIOGET_VSCREENINFO, &vi) ||
+	    ioctl(fd, FBIOGET_FSCREENINFO, &fi)) {
 		printf("fbsplash: fb0 ioctl: %s\n", strerror(errno));
-		rc = errno == ENOTTY ? 30 : errno == EINVAL ? 31 :
-		     errno == EACCES ? 32 : 39;
-	} else {
-		printf("fbsplash: fb0 %dx%d bpp %d stride %ld len %ld\n",
-		       vi.xres, vi.yres, vi.bits_per_pixel,
-		       fi.line_length, fi.smem_len);
-		p = mmap(NULL, fi.smem_len, PROT_READ | PROT_WRITE,
-			 MAP_SHARED, fd, 0);
-		if (p == MAP_FAILED) {
-			printf("fbsplash: fb0 mmap: %s\n", strerror(errno));
-			rc = errno == ENODEV ? 40 : errno == EINVAL ? 41 :
-			     errno == EACCES ? 42 : 49;
-		} else {
-			draw(p, fi.line_length, vi.xres, vi.yres);
-			printf("fbsplash: drawn through /dev/fb0\n");
-			return 0;
-		}
+		close(fd);
+		return -errno;
 	}
+	printf("fbsplash: fb0 %dx%d bpp %d stride %ld len %ld\n",
+	       vi.xres, vi.yres, vi.bits_per_pixel, fi.line_length, fi.smem_len);
+	p = mmap(NULL, fi.smem_len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+	if (p == MAP_FAILED) {
+		printf("fbsplash: fb0 mmap: %s\n", strerror(errno));
+		close(fd);
+		return -errno;
+	}
+	draw(p, fi.line_length, vi.xres, vi.yres);
+	printf("fbsplash: drawn through /dev/fb0\n");
+	return 0;
+}
 
-	/* the meowfb module: the panel's physical memory, mmaped directly */
-	fd = open("/dev/meowfb", O_RDWR);
-	if (fd >= 0) {
-		p = mmap(NULL, (size_t)FB_STRIDE * FB_H, PROT_READ | PROT_WRITE,
-			 MAP_SHARED, fd, 0);
-		if (p == MAP_FAILED) {
-			printf("fbsplash: /dev/meowfb mmap: %s\n", strerror(errno));
-			return errno == EACCES ? 60 : errno == EPERM ? 61 :
-			       errno == EINVAL ? 62 : 69;
-		}
-		draw(p, FB_STRIDE, FB_W, FB_H);
-		printf("fbsplash: drawn through /dev/meowfb\n");
-		return 7;
-	}
-	if (!rc) {
-		printf("fbsplash: no /dev/meowfb: %s\n", strerror(errno));
-		rc = errno == ENOENT ? 50 : errno == EACCES ? 51 : 59;
-	}
+static int draw_via_dev(const char *path, unsigned long phys)
+{
+	unsigned char *p;
+	int fd;
 
-	fd = open("/dev/mem", O_RDWR | O_SYNC);
+	fd = open(path, phys ? O_RDWR | O_SYNC : O_RDWR);
 	if (fd < 0) {
-		printf("fbsplash: no /dev/mem: %s (rc %d)\n", strerror(errno), rc);
-		if (rc)
-			return rc;
-		return errno == ENOENT ? 70 : errno == EACCES ? 71 :
-		       errno == EPERM ? 72 : 79;
+		printf("fbsplash: %s open: %s\n", path, strerror(errno));
+		return -errno;
 	}
 	p = mmap(NULL, (size_t)FB_STRIDE * FB_H, PROT_READ | PROT_WRITE,
-		 MAP_SHARED, fd, FB_PHYS);
+		 MAP_SHARED, fd, phys);
 	if (p == MAP_FAILED) {
-		printf("fbsplash: /dev/mem mmap: %s\n", strerror(errno));
-		return errno == EACCES ? 80 : errno == EPERM ? 81 :
-		       errno == EINVAL ? 82 : errno == EBUSY ? 83 : 89;
+		printf("fbsplash: %s mmap: %s\n", path, strerror(errno));
+		close(fd);
+		return -errno;
 	}
 	draw(p, FB_STRIDE, FB_W, FB_H);
-	printf("fbsplash: drawn through /dev/mem\n");
-	return 6;
+	printf("fbsplash: drawn through %s\n", path);
+	return 0;
+}
+
+int main(void)
+{
+	int rc;
+
+	setvbuf(stdout, NULL, _IONBF, 0);
+
+	rc = draw_via_fb0();
+	if (rc == 0)
+		return 0;
+
+	rc = draw_via_dev("/dev/meowfb", 0);
+	if (rc == 0)
+		return 7;
+
+	rc = draw_via_dev("/dev/mem", FB_PHYS);
+	if (rc == 0)
+		return 6;
+
+	return rc < 0 ? -rc : rc;
 }
