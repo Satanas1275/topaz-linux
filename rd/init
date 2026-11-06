@@ -30,7 +30,7 @@ echo "meow-linux: loading modules"
 for m in /modules/*.ko; do
 	n=$($BIN basename "$m" .ko | tr '-' '_')
 	[ -d /sys/module/$n ] && continue
-	$BIN /bin/loadmod "$m"
+	/bin/loadmod "$m"
 done
 
 # USB gadget serial console. The function is built in (CONFIG_USB_F_SERIAL).
@@ -70,7 +70,7 @@ fi
 
 echo "meow-linux: up"
 # Does the panel itself work? Draw a pattern straight on /dev/fb0.
-$BIN /bin/fbsplash >/dev/null 2>&1
+/bin/fbsplash >/dev/null 2>&1
 FBSTAT=$?
 # Heartbeat: the delay tells us how far the USB got, since the console is dead.
 #   5 s = no UDC at all (the Qualcomm glue did not probe)
