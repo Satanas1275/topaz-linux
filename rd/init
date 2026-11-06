@@ -83,12 +83,17 @@ T=5
 [ -n "$GS" ] && T=20
 # 25 s = a framebuffer registered (so the panel console should work)
 if [ -e /sys/class/graphics/fb0 ]; then T=25; fi
-# the fb0 draw: 39 = drawn, 30 = no /dev/fb0, 33 = ioctl, 36 = mmap
+# the panel draw: 39 = via /dev/fb0, 46 = via /dev/mem, 30 = no fb0,
+# 33 = fb0 ioctl failed, 36 = fb0 mmap failed, 40 = no /dev/mem,
+# 43 = /dev/mem mmap failed
 case "$FBSTAT" in
 0) T=39 ;;
+6) T=46 ;;
 1) T=30 ;;
 2) T=33 ;;
 3) T=36 ;;
+4) T=40 ;;
+5) T=43 ;;
 esac
 ( $BIN sleep $T; $BIN reboot -f ) &
 # Never exit: if init dies the kernel panics and the phone reboots into Android.
