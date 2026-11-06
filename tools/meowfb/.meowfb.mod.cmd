@@ -1,0 +1,1 @@
+cmd_/home/satanas/linux-topaz/tools/meowfb/meowfb.mod := echo   meowfb.o | awk -v RS='( |\n)' '!x[$$0]++ { print("/home/satanas/linux-topaz/tools/meowfb/"$$0) }' > /home/satanas/linux-topaz/tools/meowfb/meowfb.mod
