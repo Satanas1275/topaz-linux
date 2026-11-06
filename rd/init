@@ -20,6 +20,11 @@ mount -t devpts   devpts   /dev/pts  2>/dev/null
 # The framebuffer: /dev is a tmpfs here, so the node has to be made by hand.
 [ -e /dev/fb0 ] || mknod -m 666 /dev/fb0 c 29 0
 [ -e /dev/mem ] || mknod -m 666 /dev/mem c 1 1
+# The meowfb misc device has a dynamic minor: read it from sysfs.
+MEOWFB_DEV=$($BIN cat /sys/class/misc/meowfb/dev 2>/dev/null)
+if [ -n "$MEOWFB_DEV" ]; then
+	$BIN mknod -m 666 /dev/meowfb c "${MEOWFB_DEV%%:*}" "${MEOWFB_DEV##*:}" 2>/dev/null
+fi
 
 echo "meow-linux: kernel $($BIN cat /proc/version 2>/dev/null)"
 echo "meow-linux: loading modules"
@@ -95,10 +100,11 @@ MEOWFB=0
 [ -d /sys/module/meowfb ] && MEOWFB=1
 # Heartbeat: T = 10 + FBSTAT + 100*MEOWFB
 #   MEOWFB: 1 = the meowfb module is loaded
-#   FBSTAT: 0 = drawn via fb0, 6 = drawn via /dev/mem,
+#   FBSTAT: 0 = drawn via fb0, 7 = drawn via /dev/meowfb, 6 = drawn via /dev/mem,
 #           20/21/29 = fb0 open, 30/31/32/39 = fb0 ioctl,
-#           40/41/42/43 = fb0 mmap, 50/51/52/59 = /dev/mem open,
-#           60/61/62/63/69 = /dev/mem mmap
+#           40/41/42/49 = fb0 mmap, 50/51/59 = /dev/meowfb open,
+#           60/61/62/69 = /dev/meowfb mmap, 70/71/72/79 = /dev/mem open,
+#           80/81/82/83/89 = /dev/mem mmap
 T=$(( 10 + FBSTAT + 100 * MEOWFB ))
 ( $BIN sleep $T; $BIN reboot -f ) &
 # Never exit: if init dies the kernel panics and the phone reboots into Android.
