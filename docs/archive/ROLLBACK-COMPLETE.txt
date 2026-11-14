@@ -1,3 +1,6 @@
+[ARCHIVÉ] Instantané de debug du 12 nov. 2026 (tentative GPU n°1, échouée),
+conservé pour l'historique. Voir STATUS.md pour l'état actuel.
+
 ========================================================
  ROLLBACK COMPLET - État propre restauré
 ========================================================
@@ -32,4 +35,4 @@ CONCLUSION:
   Le système est maintenant dans l'état propre d'origine.
   
 ========================================================
-Date: 12 novembre 2024 17:35
+Date: 12 novembre 2026 17:35

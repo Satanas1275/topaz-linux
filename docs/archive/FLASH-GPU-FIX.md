@@ -1,3 +1,6 @@
+> 📦 **ARCHIVÉ** — instantané de debug du 12 nov. 2026 (tentative GPU n°1, échouée),
+> conservé pour l'historique. Voir `STATUS.md` pour l'état actuel.
+
 # 🚀 Flash GPU Hardware Acceleration Fix
 
 ## 📦 Image créée
@@ -5,7 +8,7 @@
 **Fichier:** `meow-linux-hardware-acceleration1.img`  
 **Taille:** 64 MB (66,236,416 bytes)  
 **SHA256:** `3eafc63d632c4302801b4936c3f74a9757d73ef75937f8714a2d6afbc92e566c`  
-**Date:** 12 novembre 2024 17:22
+**Date:** 12 novembre 2026 17:22
 
 ## ✅ Corrections incluses
 

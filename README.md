@@ -1,5 +1,7 @@
 # linux-topaz
 
+> **État actuel du projet : voir [`STATUS.md`](STATUS.md).** Notes techniques dans [`docs/`](docs/).
+
 **Linux on the Redmi Note 12 4G** (`topaz` / `tapas`, SM6225 "khaje" / Snapdragon 685).
 
 A separate project from `ios-topaz` / `meow-os`: instead of porting Apple's XNU, boot a

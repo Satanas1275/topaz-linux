@@ -1,3 +1,6 @@
+> 📦 **ARCHIVÉ** — instantané de debug du 12 nov. 2026 (tentative GPU n°1, échouée),
+> conservé pour l'historique. Voir `STATUS.md` pour l'état actuel.
+
 # Debug Boot Issue - meow-linux-hardware-acceleration1.img
 
 ## Problème

@@ -1,10 +1,13 @@
+[ARCHIVÉ] Instantané de debug du 12 nov. 2026 (tentative GPU n°1, échouée),
+conservé pour l'historique. Voir STATUS.md pour l'état actuel.
+
 ========================================================
  GPU HARDWARE ACCELERATION FIX - PRÊT À FLASHER
 ========================================================
 
 Image créée : meow-linux-hardware-acceleration1.img
 Taille      : 64 MB
-Date        : 12 novembre 2024 17:22
+Date        : 12 novembre 2026 17:22
 SHA256      : 3eafc63d632c4302801b4936c3f74a9757d73ef75937f8714a2d6afbc92e566c
 
 CORRECTIONS INCLUSES:

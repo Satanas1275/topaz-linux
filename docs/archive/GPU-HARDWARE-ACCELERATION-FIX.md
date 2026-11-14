@@ -1,6 +1,11 @@
+> ⚠️ **ARCHIVÉ — tentative échouée.** Le titre d'origine annonçait « Problème résolu » : c'est faux.
+> L'image `meow-linux-hardware-acceleration1.img` ne boot pas ; tout a été rollback le 12 nov. 2026
+> (voir `ROLLBACK-COMPLETE.txt`). La cause racine proposée ci-dessous (`pil_gpu_mem` / firmware ZAP)
+> n'a **pas** été validée. Il n'y a pas d'accélération GPU matérielle à ce jour. Voir `STATUS.md`.
+
 # GPU Hardware Acceleration Fix - Redmi Note 12 4G (SM6225)
 
-## 🎯 Problème résolu
+## Problème visé (hypothèse non validée)
 
 Le rendu 3D matériel ne fonctionnait pas car **le firmware ZAP ne pouvait pas être chargé** par TrustZone.
 
@@ -221,7 +226,7 @@ Avec ces corrections, le rendu 3D matériel devrait fonctionner pleinement:
 
 ## 📝 Changelog
 
-### Version 1 (2024-11-12)
+### Version 1 (2026-11-12)
 - Ajout `compatible = "shared-dma-pool"` à `pil_gpu_mem`
 - Ajout `qcom,dload-mode` au SCM
 - Script de build automatique adapté au workflow mklinux.py + shim
@@ -229,5 +234,5 @@ Avec ces corrections, le rendu 3D matériel devrait fonctionner pleinement:
 ---
 
 **Auteur:** Diagnostic et corrections appliquées par Kiro AI  
-**Date:** 12 novembre 2024  
+**Date:** 12 novembre 2026  
 **Device:** Xiaomi Redmi Note 12 4G (topaz/tapas)  
