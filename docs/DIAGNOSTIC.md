@@ -1,5 +1,8 @@
 # Diagnostic — affichage Linux sur topaz, avant Phosh
 
+> **Note (2026-11-14)** : les §1–2 décrivent l'affichage de l'image de référence (noyau vendor 5.15.41 + `meowfb`).
+> Les images sur noyau mainline pmOS (`meow-linux-drm.img`, `meow-linux-wifi-v*.img`) utilisent `msm-drm` (§6) : voir `STATUS.md`.
+
 Date : 2026-11-09. Travail fait sur l'hôte, **aucun test téléphone**, aucune partition flashée.
 
 ---
