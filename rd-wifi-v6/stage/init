@@ -212,7 +212,8 @@ if [ -n "$WLAN" ]; then
 	# --- 6. Start Dropbear SSH ------------------------------------
 	if [ -x /usr/sbin/dropbear ]; then
 		log "meow-wifi: starting dropbear SSH on port 22..."
-		/usr/sbin/dropbear -R -E -p 0.0.0.0:22 -B 2>&1 &
+		# -s : pas de login par mot de passe (clé uniquement). Surtout PAS de -B (mots de passe vides).
+		/usr/sbin/dropbear -R -E -s -p 0.0.0.0:22 2>&1 &
 		log "meow-wifi: dropbear running (pid $!)"
 	fi
 else
