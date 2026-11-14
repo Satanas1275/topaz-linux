@@ -36,3 +36,6 @@ wpa_supplicant-network.conf
 *.pem
 *.key
 .ssh/id_*
+
+# --- kernel module build leftovers ---
+modules.order
