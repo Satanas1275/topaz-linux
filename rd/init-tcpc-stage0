@@ -1,0 +1,216 @@
+#!/bin/busybox sh
+# MEOW linux initramfs: bring up just enough to get a shell on the USB serial
+# gadget. Run on the phone, not on the host.
+BIN=/bin/busybox
+$BIN --install -s /bin
+
+mount -t proc     proc     /proc     2>/dev/null
+mount -t sysfs    sysfs    /sys      2>/dev/null
+mount -t tmpfs    tmpfs    /dev      2>/dev/null
+mount -t tmpfs    tmpfs    /tmp      2>/dev/null
+mkdir -p /dev/pts
+mount -t devpts   devpts   /dev/pts  2>/dev/null
+
+[ -e /dev/console ] || mknod -m 600 /dev/console c 5 1
+[ -e /dev/null ]    || mknod -m 666 /dev/null    c 1 3
+[ -e /dev/zero ]    || mknod -m 666 /dev/zero    c 1 5
+[ -e /dev/tty ]     || mknod -m 666 /dev/tty     c 5 0
+[ -e /dev/random ]  || mknod -m 666 /dev/random  c 1 8
+[ -e /dev/urandom ] || mknod -m 666 /dev/urandom c 1 9
+# The framebuffer: /dev is a tmpfs here, so the node has to be made by hand.
+[ -e /dev/fb0 ] || mknod -m 666 /dev/fb0 c 29 0
+[ -e /dev/mem ] || mknod -m 666 /dev/mem c 1 1
+
+echo "meow-linux: kernel $($BIN cat /proc/version 2>/dev/null)"
+echo "meow-linux: loading modules"
+
+load_module() {
+	m=$1
+	[ -f "$m" ] || return
+	n=$($BIN basename "$m" .ko | tr '-' '_')
+	[ -d "/sys/module/$n" ] && return
+	/bin/loadmod "$m" 2>>/tmp/modlog
+	if [ -d "/sys/module/$n" ]; then
+		echo "meow-linux: module $n loaded"
+	else
+		echo "meow-linux: module $n FAILED"
+	fi
+}
+
+# Start the Android DT's RPM-SMD regulator and GCC clock providers first.
+load_module /modules/smem.ko
+load_module /modules/qcom_smd.ko
+load_module /modules/qcom_glink.ko
+load_module /modules/qcom_glink_smem.ko
+load_module /modules/qcom-mpm.ko
+load_module /modules/rpm-smd.ko
+load_module /modules/rpm-smd-regulator.ko
+load_module /modules/clk-smd-rpm.ko
+load_module /modules/gcc-khaje.ko
+
+# Bring up the apps SMMU and PMIC suppliers used by GENI, USB PHY and EUD.
+load_module /modules/secure_buffer.ko
+load_module /modules/qcom_iommu_util.ko
+load_module /modules/iommu-logger.ko
+load_module /modules/arm_smmu.ko
+load_module /modules/regmap-spmi.ko
+load_module /modules/qti-regmap-debugfs.ko
+load_module /modules/spmi-pmic-arb.ko
+load_module /modules/qcom-spmi-pmic.ko
+load_module /modules/qcom_spmi-regulator.ko
+load_module /modules/pinctrl-spmi-gpio.ko
+load_module /modules/pinctrl-spmi-mpp.ko
+load_module /modules/refgen.ko
+
+# Load the phone's TCPC/extcon providers before the DWC3 wrapper can probe.
+# These drivers are compiled from this exact 5.15.41 tree; the Android DT's
+# extcon phandles point to rt_pd_manager and EUD.
+load_module /modules/i2c-msm-geni.ko
+load_module /modules/phy-generic.ko
+load_module /modules/phy-msm-snps-hs.ko
+load_module /modules/eud.ko
+load_module /modules/class-dual-role.ko
+load_module /modules/tcpc_class.ko
+load_module /modules/tcpc_rt1711h.ko
+load_module /modules/usbpd.ko
+load_module /modules/qpnp-pdphy.ko
+load_module /modules/rt_pd_manager.ko
+
+# Fuel gauge and charger support.
+load_module /modules/qcom-pmic-voter.ko
+load_module /modules/bq2589x_charger.ko
+load_module /modules/sm5602_fg.ko
+load_module /modules/meowfb.ko
+# the meowfb load error, if any (the message from loadmod)
+MODERR=$($BIN grep '^meowfb' /tmp/modlog 2>/dev/null | $BIN head -1)
+
+# The meowfb misc device has a dynamic minor: read it from sysfs, now that the
+# module is loaded.
+MEOWFB_DEV=$($BIN cat /sys/class/misc/meowfb/dev 2>/dev/null)
+if [ -n "$MEOWFB_DEV" ]; then
+	$BIN mknod -m 666 /dev/meowfb c "${MEOWFB_DEV%%:*}" "${MEOWFB_DEV##*:}" 2>/dev/null
+fi
+
+# USB gadget serial console. The function is built in (CONFIG_USB_F_SERIAL).
+UDC=""
+BOUND=""
+$BIN mkdir -p /dev/config 2>/dev/null
+mount -t configfs configfs /dev/config 2>/dev/null
+WAIT=0
+while [ -z "$($BIN ls /sys/class/udc/ 2>/dev/null | $BIN head -1)" ] && [ "$WAIT" -lt 15 ]; do
+	$BIN sleep 1
+	WAIT=$((WAIT + 1))
+done
+if [ -d /dev/config/usb_gadget ]; then
+	G=/dev/config/usb_gadget/meow
+	$BIN mkdir -p $G
+	echo 0x18d1 > $G/idVendor  2>/dev/null
+	echo 0x4e42 > $G/idProduct 2>/dev/null
+	$BIN mkdir -p $G/strings/0x409
+	echo meow > $G/strings/0x409/manufacturer 2>/dev/null
+	echo meow-linux > $G/strings/0x409/product 2>/dev/null
+	$BIN mkdir -p $G/configs/b.1/strings/0x409
+	echo meow > $G/configs/b.1/strings/0x409/configuration 2>/dev/null
+	$BIN mkdir -p $G/functions/gser.0 2>/dev/null
+	$BIN ln -s $G/functions/gser.0 $G/configs/b.1/gser.0 2>/dev/null
+	UDC=$($BIN ls /sys/class/udc/ 2>/dev/null | $BIN head -1)
+	if [ -n "$UDC" ]; then
+		echo "$UDC" > $G/UDC 2>/dev/null
+		BOUND=$($BIN cat $G/UDC 2>/dev/null)
+		echo "meow-linux: udc $UDC bound=$BOUND"
+	else
+		echo "meow-linux: no udc found"
+	fi
+fi
+
+# Report USB controller and power-supply state on the framebuffer console.
+for f in /sys/class/udc/*/state; do
+	[ -r "$f" ] && echo "meow-linux: udc-state $f=$($BIN cat "$f")"
+done
+for p in /sys/class/power_supply/*; do
+	[ -d "$p" ] || continue
+	N=$($BIN cat "$p/type" 2>/dev/null)
+	O=$($BIN cat "$p/online" 2>/dev/null)
+	T=$($BIN cat "$p/usb_type" 2>/dev/null)
+	S=$($BIN cat "$p/status" 2>/dev/null)
+	echo "meow-linux: power $p type=$N online=$O usb_type=$T status=$S"
+done
+USBROOT=/sys/firmware/devicetree/base/soc/ssusb@4e00000
+if [ -d "$USBROOT" ]; then
+	COMP=$($BIN tr '\000' ' ' < "$USBROOT/compatible" 2>/dev/null)
+	STATUS=$($BIN cat "$USBROOT/status" 2>/dev/null)
+	echo "meow-linux: dt usb compatible=$COMP status=${STATUS:-implicit-ok}"
+else
+	echo "meow-linux: dt usb node missing"
+fi
+if [ -e "$USBROOT/extcon" ]; then
+	echo "meow-linux: dt usb extcon=present"
+else
+	echo "meow-linux: dt usb extcon=absent"
+fi
+[ -d /sys/module/phy_generic ] && echo "meow-linux: phy_generic=loaded" || echo "meow-linux: phy_generic=missing"
+[ -d /sys/module/phy_msm_snps_hs ] && echo "meow-linux: hs_phy=loaded" || echo "meow-linux: hs_phy=missing"
+for d in /sys/bus/platform/devices/4e00000*; do
+	[ -e "$d" ] || continue
+	DR=$($BIN readlink "$d/driver" 2>/dev/null)
+	echo "meow-linux: platform $(/bin/busybox basename "$d") driver=$DR"
+done
+DR=$($BIN readlink /sys/bus/platform/devices/soc:usb_nop_phy/driver 2>/dev/null)
+echo "meow-linux: platform usb_nop_phy driver=$DR"
+DR=$($BIN readlink /sys/bus/platform/devices/soc:hsphy@1613000/driver 2>/dev/null)
+echo "meow-linux: platform hsphy driver=$DR"
+[ -d /sys/bus/platform/drivers/msm-dwc3 ] && echo "meow-linux: msm-dwc3 driver registered" || echo "meow-linux: msm-dwc3 driver missing"
+echo "meow-linux: USB kernel messages:"
+$BIN dmesg 2>/dev/null | $BIN grep -i -E 'dwc3|ssusb|msm-dwc|extcon|usb_phy|vbus|probe.*(fail|error|defer)|spmi|rpm-smd|smmu|unknown symbol|i2c-msm-geni|regulator' | $BIN tail -20
+mount -t debugfs debugfs /sys/kernel/debug 2>/dev/null
+echo "meow-linux: deferred probes:"
+$BIN cat /sys/kernel/debug/devices_deferred 2>/dev/null | $BIN head -30
+echo "meow-linux: module errors:"
+$BIN tail -15 /tmp/modlog 2>/dev/null
+
+# /dev/ttyGS0 has a dynamically allocated major: read it from /proc/devices.
+GS=$($BIN grep ttyGS /proc/devices 2>/dev/null | $BIN awk '{print $1}' | $BIN head -1)
+if [ -n "$GS" ]; then
+	$BIN mknod -m 600 /dev/ttyGS0 c "$GS" 0 2>/dev/null
+	echo "meow-linux: /dev/ttyGS0 major $GS"
+	# Skip login: this initramfs has no user database; provide a root shell.
+	$BIN getty -n -l /bin/sh -L 115200 ttyGS0 vt100 &
+fi
+
+echo "meow-linux: up"
+# Which printk console is registered, which fb driver took fb0, and is the
+# framebuffer console bound to a framebuffer?
+CONS=0
+case "$($BIN head -1 /proc/consoles 2>/dev/null)" in
+tty0*)   CONS=1 ;;
+ttyGS0*) CONS=2 ;;
+?*)      CONS=3 ;;
+esac
+VTC=0
+[ "$($BIN cat /sys/class/vtconsole/vtcon1/bind 2>/dev/null)" = "1" ] && VTC=1
+FBN=$($BIN cat /sys/class/graphics/fb0/name 2>/dev/null)
+FN=5
+case "$FBN" in
+simplefb*)	 FN=1 ;;
+drm_fbdev*|drm*)	 FN=2 ;;
+msm_drm*)	 FN=3 ;;
+mdp*)		 FN=4 ;;
+esac
+MOD=0
+[ -d /sys/module/meowfb ] && MOD=1
+ME=8
+case "$MODERR" in
+*"Invalid module format"*) ME=1 ;;
+*"No such file"*)	  ME=2 ;;
+*"Invalid argument"*)	  ME=3 ;;
+*"Required key"*)	  ME=4 ;;
+*"Key was rejected"*)	  ME=5 ;;
+*"Exec format"*)	  ME=6 ;;
+*"File exists"*)	  ME=7 ;;
+"")			  ME=0 ;;
+esac
+MSF=0
+[ -d /sys/class/misc/meowfb ] && MSF=1
+# No heartbeat: keep the system up so the console can be used.
+# Never exit: if init dies the kernel panics and the phone reboots into Android.
+while true; do $BIN sleep 3600; done

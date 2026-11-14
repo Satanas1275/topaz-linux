@@ -1,0 +1,33 @@
+#!/bin/busybox sh
+case "$1" in
+deconfig)
+	busybox ip addr flush dev "$interface"
+	;;
+bound|renew)
+	mask=${subnet:-255.255.255.0}
+	oldifs=$IFS; IFS=.; set -- $mask; IFS=$oldifs
+	prefix=0
+	for octet in "$@"; do
+		case "$octet" in
+		255) prefix=$((prefix + 8));;
+		254) prefix=$((prefix + 7)); break;;
+		252) prefix=$((prefix + 6)); break;;
+		248) prefix=$((prefix + 5)); break;;
+		240) prefix=$((prefix + 4)); break;;
+		224) prefix=$((prefix + 3)); break;;
+		192) prefix=$((prefix + 2)); break;;
+		128) prefix=$((prefix + 1)); break;;
+		0) break;;
+		*) break;;
+	esac
+	done
+	busybox ip addr flush dev "$interface"
+	busybox ip addr add "$ip/$prefix" dev "$interface"
+	busybox ip link set "$interface" up
+	busybox ip route del default 2>/dev/null
+	for gateway in $router; do busybox ip route add default via "$gateway" dev "$interface"; break; done
+	: > /etc/resolv.conf
+	for server in $dns; do echo "nameserver $server" >> /etc/resolv.conf; done
+	;;
+esac
+exit 0

@@ -30,8 +30,20 @@ echo "meow-linux: loading modules"
 # Skip anything that is already built in (its /sys/module entry exists).
 for m in /modules/*.ko; do
 	n=$($BIN basename "$m" .ko | tr '-' '_')
+	case "$n" in
+		bq2589x_charger|qcom_pmic_voter|sm5602_fg|phy_msm_ssusb_qmp|usb_bam|focaltech_ts_i2c) continue ;;
+	esac
 	[ -d /sys/module/$n ] && continue
 	/bin/loadmod "$m" 2>>/tmp/modlog
+	rc=$?
+	[ "$rc" -eq 0 ] || echo "meow-linux: module $n load failed rc=$rc"
+done
+# Load the Topaz charger/fuel-gauge drivers after the generic modules. The
+# charger depends on the voter; the fuel gauge uses it too.
+for m in /modules/qcom-pmic-voter.ko /modules/bq2589x_charger.ko /modules/sm5602_fg.ko; do
+	[ -f "$m" ] || continue
+	/bin/loadmod "$m" 2>>/tmp/modlog
+	echo "meow-linux: load $(/bin/busybox basename "$m") rc=$?"
 done
 # the meowfb load error, if any (the message from loadmod)
 MODERR=$($BIN grep '^meowfb' /tmp/modlog 2>/dev/null | $BIN head -1)
@@ -70,12 +82,53 @@ if [ -d /dev/config/usb_gadget ]; then
 	fi
 fi
 
+# Report USB controller and power-supply state on the framebuffer console.
+for f in /sys/class/udc/*/state; do
+	[ -r "$f" ] && echo "meow-linux: udc-state $f=$($BIN cat "$f")"
+done
+for p in /sys/class/power_supply/*; do
+	[ -d "$p" ] || continue
+	N=$($BIN cat "$p/type" 2>/dev/null)
+	O=$($BIN cat "$p/online" 2>/dev/null)
+	T=$($BIN cat "$p/usb_type" 2>/dev/null)
+	S=$($BIN cat "$p/status" 2>/dev/null)
+	echo "meow-linux: power $p type=$N online=$O usb_type=$T status=$S"
+done
+USBROOT=/sys/firmware/devicetree/base/soc/ssusb@4e00000
+if [ -d "$USBROOT" ]; then
+	COMP=$($BIN tr '\000' ' ' < "$USBROOT/compatible" 2>/dev/null)
+	STATUS=$($BIN cat "$USBROOT/status" 2>/dev/null)
+	echo "meow-linux: dt usb compatible=$COMP status=${STATUS:-implicit-ok}"
+else
+	echo "meow-linux: dt usb node missing"
+fi
+if [ -e "$USBROOT/extcon" ]; then
+	echo "meow-linux: dt usb extcon=present"
+else
+	echo "meow-linux: dt usb extcon=absent"
+fi
+[ -d /sys/module/phy_generic ] && echo "meow-linux: phy_generic=loaded" || echo "meow-linux: phy_generic=missing"
+[ -d /sys/module/phy_msm_snps_hs ] && echo "meow-linux: hs_phy=loaded" || echo "meow-linux: hs_phy=missing"
+for d in /sys/bus/platform/devices/4e00000*; do
+	[ -e "$d" ] || continue
+	DR=$($BIN readlink "$d/driver" 2>/dev/null)
+	echo "meow-linux: platform $(/bin/busybox basename "$d") driver=$DR"
+done
+DR=$($BIN readlink /sys/bus/platform/devices/soc:usb_nop_phy/driver 2>/dev/null)
+echo "meow-linux: platform usb_nop_phy driver=$DR"
+DR=$($BIN readlink /sys/bus/platform/devices/soc:hsphy@1613000/driver 2>/dev/null)
+echo "meow-linux: platform hsphy driver=$DR"
+[ -d /sys/bus/platform/drivers/msm-dwc3 ] && echo "meow-linux: msm-dwc3 driver registered" || echo "meow-linux: msm-dwc3 driver missing"
+echo "meow-linux: USB kernel messages:"
+$BIN dmesg 2>/dev/null | $BIN grep -i -E 'dwc3|ssusb|msm-dwc|extcon|usb_phy|vbus|probe.*(fail|error|defer)' | $BIN tail -10
+
 # /dev/ttyGS0 has a dynamically allocated major: read it from /proc/devices.
 GS=$($BIN grep ttyGS /proc/devices 2>/dev/null | $BIN awk '{print $1}' | $BIN head -1)
 if [ -n "$GS" ]; then
 	$BIN mknod -m 600 /dev/ttyGS0 c "$GS" 0 2>/dev/null
 	echo "meow-linux: /dev/ttyGS0 major $GS"
-	$BIN getty -L 115200 ttyGS0 vt100 &
+	# Skip login: this initramfs has no user database; provide a root shell.
+	$BIN getty -n -l /bin/sh -L 115200 ttyGS0 vt100 &
 fi
 
 echo "meow-linux: up"

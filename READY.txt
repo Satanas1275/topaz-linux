@@ -1,0 +1,29 @@
+========================================================
+ GPU HARDWARE ACCELERATION FIX - PRÊT À FLASHER
+========================================================
+
+Image créée : meow-linux-hardware-acceleration1.img
+Taille      : 64 MB
+Date        : 12 novembre 2024 17:22
+SHA256      : 3eafc63d632c4302801b4936c3f74a9757d73ef75937f8714a2d6afbc92e566c
+
+CORRECTIONS INCLUSES:
+  ✅ pil_gpu_mem marqué comme shared-dma-pool
+  ✅ qcom_scm configuré avec dload-mode
+  ✅ DTB avec support GPU complet
+
+TESTER L'IMAGE:
+  $ fastboot boot ~/linux-topaz/meow-linux-hardware-acceleration1.img
+
+FLASHER (après test):
+  $ fastboot flash boot ~/linux-topaz/meow-linux-hardware-acceleration1.img
+
+DOCUMENTATION:
+  - FLASH-GPU-FIX.md         → Instructions de flash
+  - GPU-HARDWARE-ACCELERATION-FIX.md → Documentation technique complète
+  - build-sm6225-gpu-fix.sh  → Script de build pour futures modifications
+
+ROLLBACK SI BESOIN:
+  $ fastboot flash boot meow-linux-drm.img
+
+========================================================

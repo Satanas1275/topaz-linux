@@ -1,1 +1,38 @@
 kernel-src/
+*.img
+
+# --- build output ---
+out/
+*.o
+*.o.cmd
+*.ko.cmd
+*.mod
+*.mod.c
+*.cmd
+*.symvers
+
+# --- kernel / boot artifacts ---
+uvite-Image
+kernel-*-Image*
+*.bin
+*.dtb
+*.cpio.gz
+
+# --- extracted initrd / rootfs staging trees (build byproducts, ~100MB each) ---
+rd-wifi/
+rd-wifi-v3/
+rd-wifi-v4/
+rd-wifi-v5/
+rd-wifi-v5a/
+rd-wifi-v5b/
+rd-wifi-v6/stage/bin/
+rd-wifi-v6/stage/firmware/
+rd-wifi-v6/stage/lib/
+rd-wifi-v6/stage/usr/
+rd-wifi-v6/stage/var/
+
+# --- secrets / credentials ---
+wpa_supplicant-network.conf
+*.pem
+*.key
+.ssh/id_*

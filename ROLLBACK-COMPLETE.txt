@@ -1,0 +1,35 @@
+========================================================
+ ROLLBACK COMPLET - État propre restauré
+========================================================
+
+✅ STATUT: Tous les changements GPU ont été annulés
+
+FICHIERS VÉRIFIÉS:
+  ~/Documents/PostmarketOS-redmi-note-12-4g/work/kernel/arch/arm64/boot/dts/qcom/sm6225.dtsi
+  - ❌ PAS de "compatible = shared-dma-pool" dans pil_gpu_mem
+  - ❌ PAS de "qcom,dload-mode" dans scm
+
+ÉTAT ACTUEL:
+  - Device Tree SM6225: État original (pas de modifications GPU)
+  - Kernel Image: Non recompilé depuis le 10 nov
+  - DTB: Recompilé aujourd'hui SANS les changements
+
+IMAGES DISPONIBLES:
+  ✅ meow-linux-wifi-v6.img (11 nov 22:25) - FONCTIONNE
+  ❌ meow-linux-hardware-acceleration1.img - NE BOOT PAS (avec GPU fixes)
+  ✅ meow-linux-rollback-test.img (12 nov) - Device Tree propre
+
+COMMIT GIT LINUX-TOPAZ:
+  7e97d32 (11 nov 22:25) - Wi-Fi operational on SM6225
+
+PROCHAINES ÉTAPES:
+  1. Utiliser meow-linux-wifi-v6.img qui fonctionne
+  2. NE PAS modifier le Device Tree pour le GPU (ça casse le boot)
+  3. Le problème GPU reste à résoudre autrement
+
+CONCLUSION:
+  Les changements Device Tree que j'ai appliqués cassent le boot.
+  Le système est maintenant dans l'état propre d'origine.
+  
+========================================================
+Date: 12 novembre 2024 17:35

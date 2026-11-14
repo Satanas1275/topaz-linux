@@ -1,0 +1,80 @@
+#!/bin/busybox sh
+# Initramfs for the mainline (postmarketOS 7.2.9) SM6225/tapas kernel.
+# This kernel has DRM_MSM (DPU) + the xiaomi,m7-38-0c-0a panel driver and the
+# Adreno GPU built in, so it does NOT load the 5.15.41 vendor modules.
+# Goal: report who owns the panel (msm-drm / dev/dri/card0 / fb0) and keep the
+# system up so the framebuffer console can be read.
+BIN=/bin/busybox
+$BIN --install -s /bin
+
+mount -t proc     proc     /proc     2>/dev/null
+mount -t sysfs    sysfs    /sys      2>/dev/null
+mount -t tmpfs    tmpfs    /dev      2>/dev/null
+mount -t tmpfs    tmpfs    /tmp      2>/dev/null
+mkdir -p /dev/pts /dev/config
+mount -t devpts   devpts   /dev/pts  2>/dev/null
+mount -t configfs configfs /dev/config 2>/dev/null
+
+[ -e /dev/console ] || mknod -m 600 /dev/console c 5 1
+[ -e /dev/null ]    || mknod -m 666 /dev/null    c 1 3
+[ -e /dev/zero ]    || mknod -m 666 /dev/zero    c 1 5
+[ -e /dev/tty ]     || mknod -m 666 /dev/tty     c 5 0
+[ -e /dev/random ]  || mknod -m 666 /dev/random  c 1 8
+[ -e /dev/urandom ] || mknod -m 666 /dev/urandom c 1 9
+[ -e /dev/fb0 ]     || mknod -m 666 /dev/fb0     c 29 0
+[ -e /dev/mem ]     || mknod -m 666 /dev/mem     c 1 1
+
+echo "meow-drm: kernel $($BIN cat /proc/version 2>/dev/null)"
+echo "meow-drm: cmdline $($BIN cat /proc/cmdline 2>/dev/null)"
+
+# --- who owns the panel -------------------------------------------------
+echo "meow-drm: /sys/class/drm contents: $($BIN ls /sys/class/drm 2>/dev/null | tr '\n' ' ')"
+for c in /sys/class/drm/card*; do
+	[ -d "$c" ] || continue
+	DR=$($BIN readlink "$c/device/driver" 2>/dev/null)
+	echo "meow-drm: $(/bin/busybox basename "$c") driver=$(/bin/busybox basename "$DR" 2>/dev/null)"
+done
+for d in /dev/dri/*; do
+	[ -e "$d" ] && echo "meow-drm: device $d"
+done
+echo "meow-drm: fb0 name=$($BIN cat /sys/class/graphics/fb0/name 2>/dev/null)"
+echo "meow-drm: fb0 size=$($BIN cat /sys/class/graphics/fb0/virtual_size 2>/dev/null) bpp=$($BIN cat /sys/class/graphics/fb0/bits_per_pixel 2>/dev/null)"
+echo "meow-drm: vtcon1 bind=$($BIN cat /sys/class/vtconsole/vtcon1/bind 2>/dev/null)"
+echo "meow-drm: consoles=$($BIN head -1 /proc/consoles 2>/dev/null)"
+echo "meow-drm: mipi-dsi: $($BIN ls /sys/bus/mipi-dsi/devices 2>/dev/null | tr '\n' ' ')"
+for p in /sys/bus/mipi-dsi/devices/*; do
+	[ -d "$p" ] || continue
+	DR=$($BIN readlink "$p/driver" 2>/dev/null)
+	echo "meow-drm: panel $(/bin/busybox basename "$p") driver=$(/bin/busybox basename "$DR" 2>/dev/null)"
+done
+echo "meow-drm: panel power: $($BIN cat /sys/class/backlight/*/brightness 2>/dev/null | tr '\n' ' ')"
+
+echo "meow-drm: === display dmesg ==="
+$BIN dmesg 2>/dev/null | $BIN grep -iE 'drm|msm|dsi|panel|dpu|mdss|fb0|simplefb|backlight' | $BIN tail -50
+
+# --- USB serial console (optional; the panel console is the primary one) --
+UDC=$($BIN ls /sys/class/udc 2>/dev/null | $BIN head -1)
+if [ -n "$UDC" ] && [ -d /dev/config/usb_gadget ]; then
+	G=/dev/config/usb_gadget/meow
+	$BIN mkdir -p $G/strings/0x409 $G/configs/b.1/strings/0x409 $G/functions/gser.0
+	$BIN echo 0x18d1 > $G/idVendor 2>/dev/null
+	$BIN echo 0x4e42 > $G/idProduct 2>/dev/null
+	$BIN echo meow > $G/strings/0x409/manufacturer 2>/dev/null
+	$BIN echo meow-drm > $G/strings/0x409/product 2>/dev/null
+	$BIN echo meow > $G/configs/b.1/strings/0x409/configuration 2>/dev/null
+	$BIN ln -s $G/functions/gser.0 $G/configs/b.1/gser.0 2>/dev/null
+	$BIN echo "$UDC" > $G/UDC 2>/dev/null
+	echo "meow-drm: udc $UDC bound=$($BIN cat $G/UDC 2>/dev/null)"
+else
+	echo "meow-drm: no udc found (USB gadget unavailable)"
+fi
+GS=$($BIN grep ttyGS /proc/devices 2>/dev/null | $BIN awk '{print $1}' | $BIN head -1)
+if [ -n "$GS" ]; then
+	$BIN mknod -m 600 /dev/ttyGS0 c "$GS" 0 2>/dev/null
+	echo "meow-drm: /dev/ttyGS0 major $GS"
+	$BIN getty -n -l /bin/sh -L 115200 ttyGS0 vt100 &
+fi
+
+echo "meow-drm: up"
+# Never exit: a dead init panics the kernel and the phone reboots into Android.
+while true; do $BIN sleep 3600; done

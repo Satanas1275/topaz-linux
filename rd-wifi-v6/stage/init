@@ -1,0 +1,240 @@
+#!/bin/busybox sh
+# MEOW linux initramfs — Wi-Fi bring-up v6 for mainline SM6225 (topaz/tapas)
+# PostmarketOS kernel 7.2.9 booted via MEOW shim.
+
+BIN=/bin/busybox
+$BIN --install -s /bin
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+
+# 1. Mount essential filesystems
+chmod 755 /
+chown 0:0 /
+chmod 700 /root /root/.ssh 2>/dev/null
+chmod 600 /root/.ssh/authorized_keys 2>/dev/null
+
+mount -t proc     proc     /proc     2>/dev/null
+mount -t sysfs    sysfs    /sys      2>/dev/null
+mount -t devtmpfs devtmpfs /dev      2>/dev/null
+mount -t tmpfs    tmpfs    /tmp      2>/dev/null
+mount -t tmpfs    tmpfs    /run      2>/dev/null
+
+mkdir -p /dev/pts /dev/shm /dev/disk/by-partlabel /var/lib/tqftpserv /usr/share/rmtfs
+mkdir -p /run/wpa_supplicant
+chmod 755 /run/wpa_supplicant
+ln -sf /run /var/run 2>/dev/null
+
+[ -e /dev/fd ] || ln -sf /proc/self/fd /dev/fd 2>/dev/null
+[ -e /dev/stdin ] || ln -sf /proc/self/fd/0 /dev/stdin 2>/dev/null
+[ -e /dev/stdout ] || ln -sf /proc/self/fd/1 /dev/stdout 2>/dev/null
+[ -e /dev/stderr ] || ln -sf /proc/self/fd/2 /dev/stderr 2>/dev/null
+
+mount -t devpts   devpts   /dev/pts  2>/dev/null
+mount -t tmpfs    tmpfs    /dev/shm  2>/dev/null
+
+[ -e /dev/console ] || mknod -m 600 /dev/console c 5 1
+[ -e /dev/null ]    || mknod -m 666 /dev/null    c 1 3
+[ -e /dev/zero ]    || mknod -m 666 /dev/zero    c 1 5
+[ -e /dev/tty ]     || mknod -m 666 /dev/tty     c 5 0
+[ -e /dev/random ]  || mknod -m 666 /dev/random  c 1 8
+[ -e /dev/urandom ] || mknod -m 666 /dev/urandom c 1 9
+[ -e /dev/kmsg ]    || mknod -m 666 /dev/kmsg    c 1 11
+[ -e /dev/mem ]     || mknod -m 666 /dev/mem     c 1 1
+[ -e /dev/fb0 ]     || mknod -m 666 /dev/fb0     c 29 0
+
+log() {
+	echo "$@"
+	echo "$@" >> /tmp/meow-wifi.log 2>/dev/null
+}
+
+log "=========================================================="
+log "meow-wifi (v6 candidate): starting up"
+log "meow-wifi: kernel  $($BIN cat /proc/version 2>/dev/null)"
+log "meow-wifi: cmdline $($BIN cat /proc/cmdline 2>/dev/null)"
+log "=========================================================="
+
+# --- 2. EFS partitions -> /dev/disk/by-partlabel -----------------------
+log "meow-wifi: waiting for UFS partitions (modemst1/2, fsc, fsg)..."
+for i in $(seq 1 30); do
+	n=0
+	for ue in /sys/class/block/*/uevent; do
+		[ -e "$ue" ] || continue
+		dev=$($BIN basename "$($BIN dirname "$ue")")
+		pn=$($BIN sed -n 's/^PARTNAME=//p' "$ue" 2>/dev/null | $BIN head -1)
+		[ -n "$pn" ] || continue
+		n=$((n + 1))
+		ln -sf "/dev/$dev" "/dev/disk/by-partlabel/$pn" 2>/dev/null
+	done
+	[ -e /dev/disk/by-partlabel/modemst1 ] && break
+	sleep 1
+done
+log "meow-wifi: partlabels ready: $($BIN ls /dev/disk/by-partlabel 2>/dev/null | tr '\n' ' ')"
+
+# --- 3. Start tqftpserv and rmtfs -------------------------------------
+log "meow-wifi: starting tqftpserv..."
+/usr/bin/tqftpserv >/tmp/tqftpserv.log 2>&1 &
+log "meow-wifi: tqftpserv started (pid $!)"
+
+log "meow-wifi: starting rmtfs..."
+/usr/sbin/rmtfs -P -r -s -v >/tmp/rmtfs.log 2>&1 &
+log "meow-wifi: rmtfs started (pid $!)"
+
+# Fallback: manually start modem remoteproc if not already started by rmtfs
+(
+	sleep 5
+	for i in $(seq 1 15); do
+		for r in /sys/class/remoteproc/remoteproc*; do
+			[ -d "$r" ] || continue
+			m=$($BIN cat "$r/device/modalias" 2>/dev/null)
+			case "$m" in
+				*-mpss-pas*|*-mss-pil*)
+					st=$($BIN cat "$r/state" 2>/dev/null)
+					[ "$st" = "running" ] && break 2
+					if [ "$st" = "offline" ]; then
+						echo start > "$r/state" 2>/dev/null
+						echo "meow-wifi: modem remoteproc explicitly started ($r)" >> /tmp/meow-wifi.log
+					fi
+					;;
+			esac
+		done
+		sleep 1
+	done
+) &
+
+# --- 4. Wait for the wireless network interface -----------------------
+log "meow-wifi: waiting for WLAN interface (wlan0)..."
+WLAN=""
+for i in $(seq 1 90); do
+	for n in /sys/class/net/wlan* /sys/class/net/*; do
+		[ -e "$n" ] || continue
+		name=$($BIN basename "$n")
+		[ "$name" = "lo" ] && continue
+		case "$name" in
+			sit*|rmnet*|dummy*) continue ;;
+		esac
+
+		if [ -d "$n/phy80211" ] || [ -d "$n/wireless" ]; then
+			WLAN="$name"
+			break
+		fi
+
+		if [ "$($BIN cat "$n/uevent" 2>/dev/null | $BIN grep -c DEVTYPE=wlan)" != "0" ]; then
+			WLAN="$name"
+			break
+		fi
+
+		case "$name" in
+			wlan*)
+				WLAN="$name"
+				break
+				;;
+		esac
+	done
+
+	[ -n "$WLAN" ] && break
+
+	if [ -x /usr/sbin/iw ]; then
+		IW_DEV=$(/usr/sbin/iw dev 2>/dev/null | $BIN awk '$1=="Interface"{print $2}' | $BIN head -1)
+		if [ -n "$IW_DEV" ]; then
+			WLAN="$IW_DEV"
+			break
+		fi
+	fi
+
+	sleep 1
+done
+
+if [ -n "$WLAN" ]; then
+	log "=========================================================="
+	log "meow-wifi: SUCCESS: interface $WLAN appeared!"
+	MAC=$($BIN cat /sys/class/net/$WLAN/address 2>/dev/null)
+	log "meow-wifi: MAC address: $MAC"
+	log "=========================================================="
+
+	# Unblock rfkill if blocked
+	for f in /sys/class/rfkill/rfkill*/state; do
+		echo 1 > "$f" 2>/dev/null
+	done
+
+	$BIN ip link set "$WLAN" up 2>/dev/null || $BIN ifconfig "$WLAN" up 2>/dev/null
+	sleep 1
+
+	log "meow-wifi: === iw dev ==="
+	/usr/sbin/iw dev 2>&1 | while read l; do log "$l"; done
+
+	log "meow-wifi: === performing WiFi scan ==="
+	/usr/sbin/iw dev "$WLAN" scan 2>&1 | $BIN grep -E 'BSS|SSID|signal:' | $BIN head -30 | while read l; do log "$l"; done
+	log "meow-wifi: === WiFi scan completed ==="
+
+	# --- 5. Connect to OuiFi network ------------------------------
+	if [ -s /etc/wpa_supplicant.conf ]; then
+		log "meow-wifi: starting wpa_supplicant on $WLAN..."
+		/usr/sbin/wpa_supplicant -B -i "$WLAN" -Dnl80211 -c /etc/wpa_supplicant.conf >/tmp/wpa_supplicant.log 2>&1
+		sleep 2
+
+		log "meow-wifi: waiting for WPA association to OuiFi..."
+		CONNECTED=0
+		for i in $(seq 1 45); do
+			st=$(/usr/sbin/wpa_cli -p /run/wpa_supplicant -i "$WLAN" status 2>/dev/null | $BIN grep '^wpa_state' | $BIN head -1)
+			if [ "$st" = "wpa_state=COMPLETED" ]; then
+				CONNECTED=1
+				break
+			fi
+			sleep 1
+		done
+		log "meow-wifi: association status: ${st:-unknown}"
+
+		if [ "$CONNECTED" = 1 ]; then
+			log "=========================================================="
+			log "meow-wifi: ASSOCIATED TO OuiFi! Requesting DHCP lease..."
+			log "=========================================================="
+			$BIN udhcpc -i "$WLAN" -s /etc/udhcpc.script -n -q -t 8 -T 2 2>&1 | while read l; do log "$l"; done
+			ADDR=$($BIN ip -4 addr show dev "$WLAN" 2>/dev/null | $BIN grep 'inet ' | $BIN head -1)
+			log "=========================================================="
+			log "meow-wifi: SUCCESS: IP ADDRESS -> ${ADDR:-none}"
+			log "=========================================================="
+
+			if $BIN ping -c 2 -W 5 1.1.1.1 >/dev/null 2>&1; then
+				log "meow-wifi: INTERNET PING (1.1.1.1) SUCCESSFUL!"
+			else
+				log "meow-wifi: ping 1.1.1.1 failed (gateway ping might still work)"
+			fi
+		else
+			log "meow-wifi: WPA association not completed"
+			log "meow-wifi: wpa_supplicant log:"
+			$BIN cat /tmp/wpa_supplicant.log 2>/dev/null | while read l; do log "$l"; done
+			log "meow-wifi: wpa_cli status:"
+			/usr/sbin/wpa_cli -p /run/wpa_supplicant -i "$WLAN" status 2>/dev/null | while read l; do log "$l"; done
+		fi
+	else
+		log "meow-wifi: no /etc/wpa_supplicant.conf file found"
+	fi
+
+	# --- 6. Start Dropbear SSH ------------------------------------
+	if [ -x /usr/sbin/dropbear ]; then
+		log "meow-wifi: starting dropbear SSH on port 22..."
+		/usr/sbin/dropbear -R -E -p 0.0.0.0:22 -B 2>&1 &
+		log "meow-wifi: dropbear running (pid $!)"
+	fi
+else
+	log "=========================================================="
+	log "meow-wifi: WARNING: No wireless interface appeared within 90s"
+	log "=========================================================="
+fi
+
+# --- 7. Diagnostics Dump -----------------------------------------------
+log "--- Remoteproc state ---"
+$BIN cat /sys/class/remoteproc/remoteproc*/state 2>/dev/null | while read l; do log "$l"; done
+log "--- tqftpserv log ---"
+$BIN cat /tmp/tqftpserv.log 2>/dev/null | $BIN tail -15 | while read l; do log "$l"; done
+log "--- rmtfs log ---"
+$BIN cat /tmp/rmtfs.log 2>/dev/null | $BIN tail -15 | while read l; do log "$l"; done
+log "--- dmesg radio tail ---"
+$BIN dmesg 2>/dev/null | $BIN grep -iE 'ath10k|qmi|qrtr|wcn|wlan|remoteproc|mpss|modem|glink|smem' | $BIN tail -35 | while read l; do log "$l"; done
+
+log "=========================================================="
+log "meow-wifi: system ready and idling (interactive shell open)"
+log "=========================================================="
+
+$BIN getty -n -l /bin/sh 0 /dev/console &
+
+while true; do $BIN sleep 3600; done
